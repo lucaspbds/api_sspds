@@ -146,6 +146,11 @@ Tabela unificada que armazena todas as ocorrências de segurança pública extra
 4. **Integridade Referencial com `ON DELETE CASCADE`:**  
    - Se uma planilha antiga for removida ou substituída por uma versão revisada, a exclusão do arquivo remove automaticamente todas as ocorrências filhas, evitando inconsistências e dados fantasmas.
 
+5. **Segurança de Acesso e Gateway Único (Zero Trust para `anon`):**
+   - Acesso anônimo direto (`anon`) via Data API do Supabase desabilitado por padrão.
+   - Todo o tráfego de leitura e consumo dos dados deve passar obrigatoriamente pela API FastAPI (onde residem logs, rate limiting e regras de negócio).
+   - Apenas o papel interno (`service_role`) e o usuário administrativo (`postgres`) possuem permissões de escrita e leitura direta no banco.
+
 ---
 
 ## 5. Índices de Otimização
@@ -235,4 +240,16 @@ CREATE INDEX idx_crimes_arquivo_id ON public.ocorrencias_crimes(arquivo_id);
 CREATE INDEX idx_crimes_tipo_data ON public.ocorrencias_crimes(tipo_crime, data_fato);
 CREATE INDEX idx_crimes_municipio ON public.ocorrencias_crimes(municipio);
 CREATE INDEX idx_crimes_ais ON public.ocorrencias_crimes(ais);
+
+-- 5. Segurança a Nível de Linha (RLS - Row Level Security)
+ALTER TABLE public.historico_ingestoes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.informacoes_arquivo ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ocorrencias_crimes ENABLE ROW LEVEL SECURITY;
+
+-- 6. Permissões Explícitas para a Data API (Apenas Backend / Service Role)
+-- Bloqueio total para 'anon' (sem comandos GRANT para anon)
+-- Permissão total apenas para serviços autenticados internos
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.historico_ingestoes TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.informacoes_arquivo TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.ocorrencias_crimes TO service_role;
 ```

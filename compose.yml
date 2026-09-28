@@ -9,6 +9,7 @@ services:
       - .env
     volumes:
       - ./app:/app
+      - ./database:/database #Temporário
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 
   ingestion:
@@ -19,4 +20,5 @@ services:
       - .env
     volumes:
       - ./ingestion:/app
+      - ./database:/database #Temporário
     command: python pipeline.py

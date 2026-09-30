@@ -1,3 +1,5 @@
+#Responsável por capturar as configurações necessárias para o serviço de ingestão
+# no arquivo .env 
 from dotenv import load_dotenv 
 from exception import VariavelAmbienteNaoEncontrada
 import os

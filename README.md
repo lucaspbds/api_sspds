@@ -125,6 +125,43 @@ Ou, caso você não tenha colocado para rodar em segundo plano, pode utilizar o 
 
 ---
 
+### Estrutura do Projeto
+
+api_sspds/
+├── app/
+│   ├── config.py
+│   ├── dockerfile
+│   ├── exception.py
+│   └── main.py
+├── docs/
+│   ├── evidencias/
+│   │   ├── divulgacao-api-seguranca-ce.pdf
+│   │   ├── pedido-de-licenca.pdf
+│   │   └── prints_mensagens_17-09.pdf
+│   ├── api.md
+│   ├── architecture.md
+│   ├── database.md
+│   ├── diario-de-bordo.md
+│   ├── evidencias.csv
+│   ├── ingestion.md
+│   ├── logging.md
+│   └── plano-de-acao.md
+├── ingestion/
+│   ├── config.py
+│   ├── crawler.py
+│   ├── dockerfile
+│   ├── exception.py
+│   ├── pipeline.py
+│   └── processor.py
+├── .env.example
+├── .gitignore
+├── compose.yml
+├── LICENSE
+├── README.md
+└── requirements.txt
+
+---
+
 ### 🧪 Verificação da Aplicação
 
 * **Documentação interativa da API:** Acesse `http://localhost:8000/docs`.

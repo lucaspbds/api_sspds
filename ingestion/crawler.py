@@ -17,17 +17,19 @@ def extrair_links(conteudo_html):
     return conteudo_html.find_all('a')
 
 
-def crawler():
+def crawler() -> list:
     """
     Função responsável por acessar a página da SSPDS e capturar os
-    links dos arquivos disponibilizados na seção de indicadores detalhados.
+    links dos arquivos disponibilizados na seção de indicadores detalhados, além dos
+    tipos de ocorrências criminais.
 
     Args:
         Não possui argumentos.
 
     Return:
-        links_arquivos: lista contendo os endereços (href) dos arquivos
-        encontrados na seção de indicadores detalhados da página da SSPDS.
+        list [links_arquivos, tipos_ocorrencias]: lista contendo os endereços (href) dos arquivos
+        encontrados na seção de indicadores detalhados da página da SSPDS e uma lista dos tipos 
+        de ocorrências.
 
     Exception:
         Caso a variável de ambiente necessária para acessar a página
@@ -53,12 +55,12 @@ def crawler():
         links = list(map(extrair_links, container_indicadores_detalhados))[0]
 
         print(f"Qtd de links encontrados: {len(links)}")
-
+        tipos_ocorrencias = list(map(lambda link: link.text, links))
         # Extrai somente o endereço dos arquivos (atributo href)
         # de cada link encontrado.
         links_arquivos = list(map(lambda link: link['href'], links))
 
-        return links_arquivos
+        return [links_arquivos, tipos_ocorrencias]
 
     except VariavelAmbienteNaoEncontrada as VANE:
         VANE.print_mensagem_erro()

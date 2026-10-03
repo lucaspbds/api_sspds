@@ -44,6 +44,8 @@ A ingestão dos dados depende da disponibilidade das páginas e planilhas públi
 - **O que faz:** Lista as ocorrências de CVLI (Crimes Violentos Letais Intencionais) lidas a partir do ficheiro de dados processados pelo serviço de ingestão.
 - **Parâmetros:** `limit` (opcional, `integer`) - Limita a quantidade de registos retornados. Caso omitido, retorna a base completa.
 - **Exemplo de chamada:** `GET http://localhost:8000/crimes/cvli?limit=5`
+
+### Ajeitar esse exemplo de resposta, não está batendo
 - **Exemplo de resposta:**
   ```json
   [
@@ -138,6 +140,12 @@ Ou, caso você não tenha colocado para rodar em segundo plano, pode utilizar o 
 
 ---
 
+### 🧪 Verificação da Aplicação
+
+* **Documentação interativa da API:** Acesse `http://localhost:8000/docs`.
+* **Status da Ingestão:** Retornará um print contendo a quantidade de URLs coletadas e o link dos dados que foram salvos no arquivo `database/dados.json`.
+---
+
 ### Estrutura do Projeto
 
 ```text
@@ -188,10 +196,3 @@ api_sspds/
 ├── README.md
 └── requirements.txt
 ```
-
----
-
-### 🧪 Verificação da Aplicação
-
-* **Documentação interativa da API:** Acesse `http://localhost:8000/docs`.
-* **Status da Ingestão:** Retornará um print contendo a quantidade de URLs coletadas e o link dos dados que foram salvos no arquivo `database/dados.json`.

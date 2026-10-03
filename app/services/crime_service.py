@@ -1,10 +1,25 @@
+import json
+from pathlib import Path
+from typing import List, Dict, Optional, Any
+
 class CrimeService:
     @staticmethod
-    def listar_ocorrencias(limit: int = 10):
+    def listar_ocorrencias(limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """
-        Serviço responsável por buscar ocorrências criminais.
-        Nesta etapa inicial, retorna uma lista base ou simulação controlada.
+        Serviço responsável por buscar ocorrências criminais na pasta database.
+        Lê o arquivo JSON gerado pelo serviço de ingestão.
         """
-        # Aqui entrará a consulta SQL ao PostgreSQL via conexão do grupo ou arquivo JSON
-        # No caso aqui entrará o arquivo em json 
-        return []
+        file_path = Path("database/dados.json")
+        
+        # Se o arquivo ainda não existir, retorna uma lista vazia com segurança
+        if not file_path.exists():
+            return []
+        
+        # Lê o conteúdo do JSON gerado pela ingestão
+        with open(file_path, "r", encoding="utf-8") as f:
+            dados = json.load(f)
+            
+        # Se um limite foi especificado, fatia a lista; senão, retorna tudo
+        if limit is not None:
+            return dados[:limit]
+        return dados

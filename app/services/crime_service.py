@@ -6,4 +6,5 @@ class CrimeService:
         Nesta etapa inicial, retorna uma lista base ou simulação controlada.
         """
         # Aqui entrará a consulta SQL ao PostgreSQL via conexão do grupo ou arquivo JSON
+        # No caso aqui entrará o arquivo em json 
         return []

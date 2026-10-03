@@ -2,13 +2,13 @@ services:
   api:
     build:
       context: .
-      dockerfile: dockerfile
+      dockerfile: app/dockerfile
     ports:
       - "8000:8000"
     env_file:
       - .env
     volumes:
-      - .:/workspace         # Mapeia a raiz inteira para o contentor
+      - ./app:/workspace/app   
       - ./database:/database #Temporário
     working_dir: /workspace
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload

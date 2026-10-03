@@ -62,19 +62,3 @@ api_sspds/
 * **Códigos de Resposta:**
   * `200 OK`: Dados encontrados e retornados com sucesso.
   * `404 Not Found`: Nenhum registo de CVLI localizado na base de dados.
-
-## 🛠️ Como Executar a API
-
-### Desenvolvimento Local (com Uvicorn e Recarregamento Automático)
-Com o ambiente virtual ativado na raiz do projeto:
-```bash
-uvicorn app.main:app --reload
-```
-
-### Ambiente Contêinerizado (Docker Compose)
-Para subir a API e o serviço de ingestão em conjunto:
-```bash
-docker compose up --build
-```
-
-Aceda à documentação interativa em Swagger UI através de: **`http://localhost:8000/docs`**.

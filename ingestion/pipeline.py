@@ -18,14 +18,14 @@ def pipeline() -> None:
     """
 
     # O crawler identifica os arquivos disponibilizados pela SSPDS
-    # e retorna uma lista contendo os endereços desses arquivos.
-    lista_url = crawler()
+    # e retorna uma lista contendo os endereços desses arquivos e os tipos de crimes.
+    lista_url, tipos_ocorrencias = crawler()
 
     print(lista_url[0])
 
     # O primeiro arquivo encontrado é enviado para o processador,
     # que realiza a leitura da planilha e sua conversão para JSON.
-    processor(lista_url[0])
+    processor(lista_url[0], tipos_ocorrencias)
 
 
 if __name__ == "__main__":

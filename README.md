@@ -45,15 +45,21 @@ A ingestão dos dados depende da disponibilidade das páginas e planilhas públi
 - **Parâmetros:** `limit` (opcional, `integer`) - Limita a quantidade de registos retornados. Caso omitido, retorna a base completa.
 - **Exemplo de chamada:** `GET http://localhost:8000/crimes/cvli?limit=5`
 
-### Ajeitar esse exemplo de resposta, não está batendo
 - **Exemplo de resposta:**
   ```json
   [
     {
-      "id": "1",
-      "municipio": "Fortaleza",
-      "data": "2026-09-01",
-      "tipo": "CVLI"
+      "AIS": "AIS 04",
+      "Município": "Canindé",
+      "Data": "2026-01-01",
+      "Hora": "02:40:00",
+      "Dia da Semana": "Quinta",
+      "vitima_genero": null,
+      "vitima_idade": null,
+      "vitima_escolaridade": null,
+      "vitima_raca": null,
+      "natureza": null,
+      "meio_empregado": null
     }
   ]
   ```

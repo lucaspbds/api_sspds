@@ -17,8 +17,7 @@ class CrimeService:
         
         # Lê o conteúdo do JSON gerado pela ingestão
         with open(file_path, "r", encoding="utf-8") as f:
-            dados = json.load(f)
-            
+            dados = json.load(f)    
         # Se um limite foi especificado, fatia a lista; senão, retorna tudo
         if limit is not None:
             return dados[:limit]

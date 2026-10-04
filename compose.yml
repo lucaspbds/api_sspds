@@ -9,7 +9,7 @@ services:
       - .env
     volumes:
       - ./app:/workspace/app   
-      - ./database:/database #Temporário
+      - ./database:/workspace/database #Temporário
     working_dir: /workspace
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 

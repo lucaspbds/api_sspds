@@ -69,3 +69,33 @@
 - Criar a primeira rota funcional da API (Nikelly);
 - Melhorar a segurança do banco de dados (Abimael);
 - Criar a tabela de logs (Abimael).
+
+---
+### Semana de 04/10
+
+**Quem trabalhou e quanto:**
+- David Lucas Pereira Braga dos Santos -  8h17
+- Nikelly Santiago da Silva - 9h
+- Carlos Abimael Oliveira do Nascimento - 1h15
+  
+**O que foi feito:**
+- **Segurança do banco de dados:** Conexão com banco de dados através de um token. (Abimael)
+- **Serviço de ingestão de dados (base):** Captura urls, baixa arquivos e salva os dados em JSON. (Lucas)
+- **Reajuste no plano de ação:** Teste do público externo está no marco 2. (Lucas)
+- **Organizar a pasta docs do projeto:** Pasta organizada de acordo com os critérios do professor. (Lucas)
+- **Readme criado** (Lucas e Nikelly)
+- **Problema da coleta do indicador de contagem resolvido:** nós decidimos utilizar um indicador de origem no link da api para excluir os bots da contagem e um token de identificação para a equipe, desta forma, as consultas da equipe não será contabilizado. (TODOS)
+- **Estrutura inicial da API e uma rota funcional** (Nikelly) 
+
+**Obstáculo:**
+- **Funcionalidade de cada arquivo:** Tivemos uma dificuldade para entender como funcionava o `diário de bordo` e o arquivo `evidencias.xlsx`, pois antes estávamos criando um arquivo por diário de bordo e não estávamos entendendo o que podia ser evidências ou não. Custou ~1h30 para organizar os arquivos e preencher corretamente. 
+
+**Contato com o público:**
+- Irmão do David Lucas
+
+**Evidência coletada:**
+- Teste da aplicação pelo público externo: `docs\evidencias\teste-aplicacao01.pdf`
+
+**Próxima semana:**
+- Divulgação de como está o projeto no linkedIn(Nikelly);
+- Organizar o Trello para o próximo marco (Lucas);

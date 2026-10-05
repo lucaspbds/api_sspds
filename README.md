@@ -130,7 +130,7 @@ docker compose up ingestion
 
 1. **Subir todos os serviços:**
    ```bash
-   docker compose up 
+   docker compose up --build
    ```
 Observação: Caso queira subir os serviços em segundo plano, apenas coloque a flag `-d` no final do código acima.
 

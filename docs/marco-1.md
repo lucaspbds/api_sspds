@@ -8,7 +8,7 @@
 - **Marco e data:** Marco 1 - 02/10/2026
 - **Trilha:** A
 - **Endereço público do produto:** https://github.com/lucaspbds/api_sspds.git
-- **Commit ou tag desta entrega:** `feat: Evidência cadastrada no arquivo evidencias.csv`
+- **Commit ou tag desta entrega:** `5920b1d`
 ## Campo 1 — O que funciona hoje
 1. Fazer uma requisição `GET http://localhost:8000/crimes/cvli?limit=5` e receber as 5 primeiras linhas da ocorrências de CVLI (Crimes Violentos Letais Intencionais) em formato JSON.
 2. Abrir `http://localhost:8000/docs` no navegador para acessar e interagir com a documentação automática da API.

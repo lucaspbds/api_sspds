@@ -54,12 +54,12 @@ A ingestão dos dados depende da disponibilidade das páginas e planilhas públi
       "Data": "2026-01-01",
       "Hora": "02:40:00",
       "Dia da Semana": "Quinta",
-      "vitima_genero": null,
-      "vitima_idade": null,
-      "vitima_escolaridade": null,
-      "vitima_raca": null,
-      "natureza": null,
-      "meio_empregado": null
+      "Gênero": "Masculino",
+      "Idade da Vítima": 50,
+      "Escolaridade da Vítima": "Alfabetizado",
+      "Raça da Vítima": "Não Informada",
+      "Natureza": "HOMICIDIO DOLOSO",
+      "Meio Empregado": "Arma branca"
     }
   ]
   ```
@@ -124,15 +124,46 @@ docker compose up ingestion
 
 ---
 
-### 🔗 2. Execução Conjunta (API + Ingestion)
+### 💻 Execução Local (Sem Docker)
 
-####  Via Docker Compose
+Caso prefira rodar a aplicação diretamente no seu ambiente Python:
+
+1. **Criar e ativar o ambiente virtual:**
+   ```bash
+   # Windows (PowerShell)
+   python -m venv .venv
+   .venv\Scripts\Activate.ps1
+
+   # Linux / macOS
+   python3 -m venv .venv
+   source .venv/bin/activate
+   ```
+
+2. **Instalar as dependências:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. **Executar a Ingestão de Dados:**
+   ```bash
+   python ingestion/pipeline.py
+   ```
+   *(Os dados processados serão salvos na pasta database/dados.json).*
+
+4. **Executar a API:**
+   ```bash
+   uvicorn app.main:app --reload
+   ```
+
+---
+
+### 🔗 Execução Conjunta via Docker Compose
 
 1. **Subir todos os serviços:**
    ```bash
    docker compose up --build
    ```
-Observação: Caso queira subir os serviços em segundo plano, apenas coloque a flag `-d` no final do código acima.
+   *(Observação: para rodar em segundo plano, adicione a flag `-d`).*
 
 ---
 
@@ -142,43 +173,41 @@ Observação: Caso queira subir os serviços em segundo plano, apenas coloque a 
   ```bash
   docker compose down
   ```
-Ou, caso você não tenha colocado para rodar em segundo plano, pode utilizar o atalho `Ctrl + C` no terminal correspondente.
 
 ---
 
 ### 🧪 Verificação da Aplicação
 
 * **Documentação interativa da API:** Acesse `http://localhost:8000/docs`.
-* **Status da Ingestão:** Retornará um print contendo a quantidade de URLs coletadas e o link dos dados que foram salvos no arquivo `database/dados.json`.
+* **Status da Ingestão:** Retornará no terminal a quantidade de URLs coletadas e os dados salvos em `database/dados.json`.
+
 ---
 
 ### Estrutura do Projeto
-
 ```text
 api_sspds/
 ├── app/
 │   ├── __init__.py
-│   ├── main.py                 
-│   ├── config.py               
-│   ├── exception.py            
+│   ├── config.py
+│   ├── dockerfile
+│   ├── exception.py
+│   ├── main.py
 │   ├── routers/
 │   │   ├── __init__.py
-│   │   └── crimes.py           
+│   │   └── crimes.py
 │   ├── schemas/
 │   │   ├── __init__.py
-│   │   ├── base_schema.py      
-│   │   ├── operacional_schema.py 
-│   │   ├── vitima_schema.py    
-│   │   └── preconceito_schema.py 
+│   │   ├── base_schema.py
+│   │   ├── operacional_schema.py
+│   │   ├── preconceito.py
+│   │   └── vitima_schema.py
 │   └── services/
 │       ├── __init__.py
-│       └── crime_service.py    
+│       └── crime_service.py
 ├── database/
+│   ├── dados.json
+│   └── tiposOcorrencias.json
 ├── docs/
-│   ├── evidencias/
-│   │   ├── divulgacao-api-seguranca-ce.pdf
-│   │   ├── pedido-de-licenca.pdf
-│   │   └── prints_mensagens_17-09.pdf
 │   ├── api.md
 │   ├── architecture.md
 │   ├── database.md
@@ -186,7 +215,12 @@ api_sspds/
 │   ├── evidencias.csv
 │   ├── ingestion.md
 │   ├── logging.md
-│   └── plano-de-acao.md
+│   ├── marco-1.md
+│   ├── plano-de-acao.md
+│   └── evidencias/
+│       ├── divulgacao-api-seguranca-ce.pdf
+│       ├── prints_mensagens_17-09.pdf
+│       └── teste-aplicacao01.pdf
 ├── ingestion/
 │   ├── config.py
 │   ├── crawler.py
@@ -197,8 +231,6 @@ api_sspds/
 ├── .env.example
 ├── .gitignore
 ├── compose.yml
-├── dockerfile
 ├── LICENSE
 ├── README.md
 └── requirements.txt
-```

@@ -1,7 +1,7 @@
-data;tipo;indicador;canal;quem_de_fora;valor;descricao;arquivo
-17/09/2026;;;instagram;NotÌcias do Cear·;;DivulgaÁ„o do projeto;docs\evidencias\prints_mensagens_17-09.pdf
-17/09/2026;;;instagram;Fortaleza Ordin·ria;;DivulgaÁ„o do projeto;docs\evidencias\prints_mensagens_17-10.pdf
-17/09/2026;;;instagram;Opovo Online;;DivulgaÁ„o do projeto;docs\evidencias\prints_mensagens_17-11.pdf
-17/09/2026;;;instagram;NotÌcias 24 horas Cear·;;DivulgaÁ„o do projeto;docs\evidencias\prints_mensagens_17-12.pdf
-21/09/2026;;;email;SSPDS/SUPESP;;SolicitaÁ„o de manifestaÁ„o formal sobre os termos de licenÁa e uso de dados abertos estatÌsticos (SeguranÁa P˙blica) para fins de publicaÁ„o e integraÁ„o via API.;docs\evidencias\pedido-de-licenca.pdf
-04/10/2026;qualitativa;qualitativa;whatsapp;irm„o do David Lucas;;Feedback da aplicaÁ„o;docs\evidencias\teste-aplicacao01.pdf
+data,tipo,indicador,canal,quem_de_fora,valor,descricao,arquivo
+2026-09-17,contato,divulgacao,instagram,Not√≠cias do Cear√°,1,Divulga√ß√£o do projeto para portais de not√≠cias,docs/evidencias/prints_mensagens_17-09.pdf
+2026-09-17,contato,divulgacao,instagram,Fortaleza Ordin√°ria,1,Divulga√ß√£o do projeto para portais de not√≠cias,docs/evidencias/prints_mensagens_17-09.pdf
+2026-09-17,contato,divulgacao,instagram,Opovo Online,1,Divulga√ß√£o do projeto para portais de not√≠cias,docs/evidencias/prints_mensagens_17-09.pdf
+2026-09-17,contato,divulgacao,instagram,Not√≠cias 24 horas Cear√°,1,Divulga√ß√£o do projeto para portais de not√≠cias,docs/evidencias/prints_mensagens_17-09.pdf
+2026-09-17,processo,divulgacao,documento,P√∫blico geral,1,Documento de apresenta√ß√£o utilizado para divulga√ß√£o do projeto,docs/evidencias/divulgacao-api-seguranca-ce.pdf
+2026-10-04,qualitativa,qualitativa,whatsapp,Irm√£o do David Lucas,1,Feedback da aplica√ß√£o em teste com usu√°rio externo,docs/evidencias/teste-aplicacao01.pdf

@@ -1,3 +1,5 @@
+import os
+from pathlib import Path
 import pandas as pd
 import json 
 
@@ -24,10 +26,14 @@ def processor(url: str, tiposOcorrencias:list) -> None:
         indent=4
     )
 
+
+    # Define o diretório do banco via variável de ambiente (padrão: "database")
+    database_dir = Path(os.getenv("DATABASE_PATH", "database"))
+    database_dir.mkdir(parents=True, exist_ok=True)
     # Salva os dados em um arquivo JSON
-    with open('/database/dados.json', 'w', encoding='utf-8') as f:
+    with open(database_dir/'dados.json', 'w', encoding='utf-8') as f:
         f.write(json_dados)
 
     tiposOcorrenciasJson = json.dumps(tiposOcorrencias)
-    with open('/database/tiposOcorrencias.json', 'w', encoding='utf-8') as f:
-            f.write(tiposOcorrenciasJson)
+    with open(database_dir/'tiposOcorrencias.json', 'w', encoding='utf-8') as f:
+        f.write(tiposOcorrenciasJson)

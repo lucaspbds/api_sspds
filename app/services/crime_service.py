@@ -9,7 +9,8 @@ class CrimeService:
         Serviço responsável por buscar ocorrências criminais na pasta database.
         Lê o arquivo JSON gerado pelo serviço de ingestão.
         """
-        file_path = Path("database/dados.json")
+        database_dir = Path(os.getenv("DATABASE_PATH", "database"))
+        file_path = database_dir / "dados.json"
         
         # Se o arquivo ainda não existir, retorna uma lista vazia com segurança
         if not file_path.exists():

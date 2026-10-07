@@ -1,3 +1,4 @@
+import os
 from config import get_variavel_ambiente
 from exception import VariavelAmbienteNaoEncontrada
 import requests as r
@@ -41,7 +42,10 @@ def crawler() -> list:
         # para evitar deixar a URL diretamente escrita no código.
         url_sspds = get_variavel_ambiente('url_sspds')
 
-        html = r.get(url_sspds).text
+        timeout_crawler = int(os.getenv("CRAWLER_TIMEOUT", 10))
+        resposta = r.get(url_sspds, timeout=timeout_crawler)
+        resposta.raise_for_status()
+        html = resposta.text
         soup = BeautifulSoup(html, 'html.parser')
 
         # Seleciona o elemento da página onde estão localizados

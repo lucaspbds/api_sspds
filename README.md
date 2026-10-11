@@ -74,6 +74,7 @@ Certifique-se de ter instalado em sua máquina:
 * **Python 3.10+**
 * **Git**
 * **Docker** 
+* **WSL** 
 
 ---
 

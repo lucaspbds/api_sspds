@@ -205,6 +205,28 @@ Caso prefira rodar a aplicação diretamente no seu ambiente Python:
 
 ---
 
+### Executando os Testes
+
+O projeto utiliza o **pytest** em conjunto com o `TestClient` do FastAPI para garantir a integridade das rotas, validações de parâmetros e os códigos de resposta HTTP (`200`, `404` e `422`).
+
+1. **Ativar o Ambiente Virtual**
+Certifique-se de que o seu ambiente virtual está ativado no terminal:
+
+- **Windows (PowerShell):**
+  ```bash
+  venv\Scripts\Activate.ps1
+  ```
+
+2. **Instalar as Dependências**
+  ```bash
+  pip install -r requirements.txt
+  ```
+
+3. **Rodar Testes**
+  ```bash
+  python -m pytest -v
+  ```
+
 ### 🧪 Verificação da Aplicação
 
 * **Documentação interativa da API:** Acesse `http://localhost:8000/docs`.
@@ -257,6 +279,8 @@ api_sspds/
 │   ├── exception.py
 │   ├── pipeline.py
 │   └── processor.py
+├── tests/
+│   ├── test_crimes.py
 ├── .env.example
 ├── .gitignore
 ├── compose.yml

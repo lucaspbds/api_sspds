@@ -5,14 +5,14 @@
 	1. David Lucas Pereira Braga dos Santos - 581594
 	2. Carlos Abimael Oliveira do Nascimento - 587010
 	3. Nikelly Santiago da Silva - 567082
-- **Marco e data:** Marco 1 - 02/10/2026
+- **Marco e data:** Marco 1 - 12/10/2026
 - **Trilha:** A
 - **Endereço público do produto:** https://github.com/lucaspbds/api_sspds.git
-- **Commit ou tag desta entrega:** `5920b1d`
+- **Commit ou tag desta entrega:** `9b1267837b0a5d1cb0dee06e80ccac962f89fce3`
 ## Campo 1 — O que funciona hoje
 1. Fazer uma requisição `GET http://localhost:8000/crimes/cvli?limit=5` e receber as 5 primeiras linhas da ocorrências de CVLI (Crimes Violentos Letais Intencionais) em formato JSON.
 2. Abrir `http://localhost:8000/docs` no navegador para acessar e interagir com a documentação automática da API.
-3. Executar o serviço de ingestão via `docker compose up ingestion` para coletar e converter as planilhas da SSPDS/CE em dados processados no arquivo `database/dados.json`.
+3. Executar o serviço de ingestão via `docker compose up ingestion` e via uvicorn no ambiente python para coletar e converter as planilhas da SSPDS/CE em dados processados no arquivo `database/dados.json`.
 
 ## Campo 2 — O que mudou desde o marco anterior
 

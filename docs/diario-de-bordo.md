@@ -71,31 +71,34 @@
 - Criar a tabela de logs (Abimael).
 
 ---
-### Semana de 04/10
+### Semana de 02/09
 
 **Quem trabalhou e quanto:**
-- David Lucas Pereira Braga dos Santos -  8h17
-- Nikelly Santiago da Silva - 9h
-- Carlos Abimael Oliveira do Nascimento - 1h15
+- Nikelly Santiago da Silva - 8h
+- Carlos Abimael Oliveira do Nascimento - 4h
   
 **O que foi feito:**
-- **Segurança do banco de dados:** Conexão com banco de dados através de um token. (Abimael)
-- **Serviço de ingestão de dados (base):** Captura urls, baixa arquivos e salva os dados em JSON. (Lucas)
-- **Reajuste no plano de ação:** Teste do público externo está no marco 2. (Lucas)
-- **Organizar a pasta docs do projeto:** Pasta organizada de acordo com os critérios do professor. (Lucas)
-- **Readme criado** (Lucas e Nikelly)
-- **Problema da coleta do indicador de contagem resolvido:** nós decidimos utilizar um indicador de origem no link da api para excluir os bots da contagem e um token de identificação para a equipe, desta forma, as consultas da equipe não será contabilizado. (TODOS)
-- **Estrutura inicial da API e uma rota funcional** (Nikelly) 
+-  Corrigir do erro de paramêtro de limit, para vazio, valores negativos, str ou não achados. (Nikelly).
+- Escrever testes que cubram esse caso. (Nikelly).
+- Timeout no crawler e caminho do banco por variável de ambiente. (Abimael).
+- README com exemplo real de resposta e árvore correta. (Nikelly e Abimael)
+- Instrução de rodar sem Docker (Abimael)
+- Atualização de evidencias.csv no formato do modelo (Abimael) 
+- Marco-1.md com nova autopontuação e o SHA do último commit (Nikelly)
+- Atualização do diário de bordo (Nikelly).
 
 **Obstáculo:**
-- **Funcionalidade de cada arquivo:** Tivemos uma dificuldade para entender como funcionava o `diário de bordo` e o arquivo `evidencias.xlsx`, pois antes estávamos criando um arquivo por diário de bordo e não estávamos entendendo o que podia ser evidências ou não. Custou ~1h30 para organizar os arquivos e preencher corretamente. 
+- Falta de conhecimento técnico para configurar o ambiente docker.
+- Desentendimento por causa da exclusão de um arquivo confidencial de commit, gerando um novo histórico e confusão entre merge.
 
 **Contato com o público:**
-- Irmão do David Lucas
+- Público do LinkedIn
 
 **Evidência coletada:**
-- Teste da aplicação pelo público externo: `docs\evidencias\teste-aplicacao01.pdf`
 
 **Próxima semana:**
-- Divulgação de como está o projeto no linkedIn(Nikelly);
-- Organizar o Trello para o próximo marco (Lucas);
+- Implementar o downloader (Lucas);
+- Criar post de Marco 1 no LinkedIn (Nikelly);
+- Implementar registro de acesso (Nikelly);
+- Integrar a aplicação ao banco de dados (Abimael);
+- Criar a tabela de logs (Abimael).

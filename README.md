@@ -45,7 +45,7 @@ A ingestão dos dados depende da disponibilidade das páginas e planilhas públi
 - **Parâmetros:** `limit` (opcional, `integer`) - Limita a quantidade de registos retornados. Caso omitido, retorna a base completa.
 - **Exemplo de chamada:** `GET http://localhost:8000/crimes/cvli?limit=5`
 
-- **Exemplo de resposta:**
+- **Exemplo de Resposta (Sucesso - `200 OK`)**
   ```json
   [
     {
@@ -63,7 +63,35 @@ A ingestão dos dados depende da disponibilidade das páginas e planilhas públi
     }
   ]
   ```
-- **Erros possíveis:** `404 Not Found` (quando nenhum dado de CVLI é encontrado na base).
+
+- **Exemplo de Resposta (Erro - `422 Unprocessable Content`)**
+  ```json
+    {
+    "detail": [
+      {
+        "type": "int_parsing",
+        "loc": [
+          "query",
+          "limit"
+        ],
+        "msg": "Input should be a valid integer, unable to parse string as an integer",
+        "input": "d"
+      }
+    ]
+  }
+  ```
+
+- **Exemplo de Resposta (Erro - `404 Not Found`)**
+```json
+    {
+  "detail": "Nenhum dado de CVLI encontrado."
+    }
+  ```
+
+
+- **Erros possíveis:**
+  * `404 Not Found`: Retornado quando nenhum dado de CVLI é encontrado na base.
+  * `422 Validation Error / Unprocessable Content`: Retornado quando o parâmetro informado é inválido (por exemplo: um número negativo, zero ou um valor não numérico).
 
 ## Como rodar localmente
 
@@ -74,7 +102,7 @@ Certifique-se de ter instalado em sua máquina:
 * **Python 3.10+**
 * **Git**
 * **Docker** 
-* **WSL** 
+* **WSL** (obrigatório para o uso do Docker; exige a ativação prévia da virtualização no computador)
 
 ---
 

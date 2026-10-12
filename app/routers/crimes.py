@@ -1,12 +1,17 @@
 from typing import Optional, List
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from app.services.crime_service import CrimeService
 from app.schemas.vitima_schema import CvliResponse
 
 router = APIRouter(prefix="/crimes", tags=["Crimes"])
 
 @router.get("/cvli", response_model=List[CvliResponse])
-def listar_cvli(limit: Optional[int] = None):
+def listar_cvli(
+    limit: Optional[int] = Query(
+        None, 
+        gt=0
+    )
+):
     """
     Lista ocorrências de CVLI. 
     Se o parâmetro 'limit' não for informado, retorna todos os registos.

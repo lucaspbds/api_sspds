@@ -223,6 +223,7 @@ pip install -r requirements.txt
 ```
 
 3. **Rodar Testes**
+	
 	*Você precisa rodar o serviço de ingestão de dados antes de rodar os testes*
 ```bash
 python -m pytest -v

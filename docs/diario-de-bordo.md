@@ -94,7 +94,7 @@
 - Irmão do David Lucas
 
 **Evidência coletada:**
-- Teste da aplicação pelo público externo: `docs\evidencias\teste-aplicacao01.pdf`
+- Teste da aplicação pelo público externo: `docs\evidencias\teste-aplicacao01_04-10.pdf`
 
 **Próxima semana:**
 - Divulgação de como está o projeto no linkedIn(Nikelly);

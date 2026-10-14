@@ -86,20 +86,19 @@ A ingestão dos dados depende da disponibilidade das páginas e planilhas públi
     {
   "detail": "Nenhum dado de CVLI encontrado."
     }
-  ```
-
+```
 
 - **Erros possíveis:**
   * `404 Not Found`: Retornado quando nenhum dado de CVLI é encontrado na base.
   * `422 Validation Error / Unprocessable Content`: Retornado quando o parâmetro informado é inválido (por exemplo: um número negativo, zero ou um valor não numérico).
 
-## Como rodar localmente
+## 🚀 Como rodar localmente
 
 ### 📋 Pré-requisitos
 
 Certifique-se de ter instalado em sua máquina:
 
-* **Python 3.10+**
+* **Python 3.13+**
 * **Git**
 * **Docker** 
 * **WSL** (obrigatório para o uso do Docker; exige a ativação prévia da virtualização no computador)
@@ -123,13 +122,13 @@ url_sspds="https://www.ce.gov.br/sspds/estatisticas/"
 Observação: Utilize o arquivo `.env.example`.
 
 ---
+### Via Docker
+####  Execução Individual dos Serviços
 
-### 🚀 1. Execução Individual dos Serviços
-
-#### A. Serviço de API
+##### A. Serviço de API
 
 A API é responsável por disponibilizar os dados processados via endpoints.
-##### Execução via Docker (Individual)
+###### Execução via Docker (Individual)
 ```bash
 # Construir a imagem Docker
 docker compose build api
@@ -139,10 +138,10 @@ docker compose up api
 ```
 
 ---
-#### B. Serviço de Ingestão (Ingestion)
+##### B. Serviço de Ingestão (Ingestion)
 
 O serviço de ingestão executa a coleta, transforma os dados em json e salva na pasta `database`.
-##### Execução via Docker (Individual)
+###### Execução via Docker (Individual)
 ```bash
 # Criar a imagem do serviço de Ingestion
 docker compose build ingestion
@@ -152,13 +151,27 @@ docker compose up ingestion
 ```
 
 ---
+#### 🔗 Execução Conjunta via Docker Compose
 
+1. **Subir todos os serviços:**
+   ```bash
+   docker compose up --build
+   ```
+
+---
+#### 🛠️ Parar Serviços Docker
+
+1. Aperte `Ctrl + C` para finalizar os processos docker
+2. Verifique se ainda tem algum serviço rodando:
+	- Rode o comando `docker compose ps` para listar todos os serviços que estão rodando no momento. Caso tenha, rode `docker compose down` para finalizar. 
+
+---
 ### 💻 Execução Local (Sem Docker)
 
 Caso prefira rodar a aplicação diretamente no seu ambiente Python:
 
 1. **Criar e ativar o ambiente virtual:**
-   ```bash
+```bash
    # Windows (PowerShell)
    python -m venv .venv
    .venv\Scripts\Activate.ps1
@@ -166,67 +179,25 @@ Caso prefira rodar a aplicação diretamente no seu ambiente Python:
    # Linux / macOS
    python3 -m venv .venv
    source .venv/bin/activate
-   ```
+```
 
 2. **Instalar as dependências:**
-   ```bash
-   pip install -r requirements.txt
-   ```
+```bash
+pip install -r requirements.txt
+```
 
 3. **Executar a Ingestão de Dados:**
-   ```bash
-   python ingestion/pipeline.py
-   ```
+```bash
+python ingestion/pipeline.py
+```
    *(Os dados processados serão salvos na pasta database/dados.json).*
 
 4. **Executar a API:**
-   ```bash
-   uvicorn app.main:app --reload
-   ```
+```bash
+uvicorn app.main:app --reload
+```
 
 ---
-
-### 🔗 Execução Conjunta via Docker Compose
-
-1. **Subir todos os serviços:**
-   ```bash
-   docker compose up --build
-   ```
-   *(Observação: para rodar em segundo plano, adicione a flag `-d`).*
-
----
-
-### 🛠️ Parar e Limpar Serviços
-
-* **Parar serviços via Docker Compose:**
-  ```bash
-  docker compose down
-  ```
-
----
-
-### Executando os Testes
-
-O projeto utiliza o **pytest** em conjunto com o `TestClient` do FastAPI para garantir a integridade das rotas, validações de parâmetros e os códigos de resposta HTTP (`200`, `404` e `422`).
-
-1. **Ativar o Ambiente Virtual**
-Certifique-se de que o seu ambiente virtual está ativado no terminal:
-
-- **Windows (PowerShell):**
-  ```bash
-  venv\Scripts\Activate.ps1
-  ```
-
-2. **Instalar as Dependências**
-  ```bash
-  pip install -r requirements.txt
-  ```
-
-3. **Rodar Testes**
-  ```bash
-  python -m pytest -v
-  ```
-
 ### 🧪 Verificação da Aplicação
 
 * **Documentação interativa da API:** Acesse `http://localhost:8000/docs`.
@@ -234,56 +205,50 @@ Certifique-se de que o seu ambiente virtual está ativado no terminal:
 
 ---
 
-### Estrutura do Projeto
+### 🔎 Executar os Testes
+
+O projeto utiliza o **pytest** em conjunto com o `TestClient` do FastAPI para garantir a integridade das rotas, validações de parâmetros e os códigos de resposta HTTP (`200`, `404` e `422`).
+
+1. **Ativar o Ambiente Virtual**
+Certifique-se de que o seu ambiente virtual está ativado no terminal:
+
+- **Windows (PowerShell):**
+```bash
+venv\Scripts\Activate.ps1
+```
+
+2. **Instalar as Dependências**
+```bash
+pip install -r requirements.txt
+```
+
+3. **Rodar Testes**
+	*Você precisa rodar o serviço de ingestão de dados antes de rodar os testes*
+```bash
+python -m pytest -v
+```
+
+---
+
+## 📁 Estrutura do Projeto
 ```text
 api_sspds/
 ├── app/
-│   ├── __init__.py
-│   ├── config.py
-│   ├── dockerfile
-│   ├── exception.py
-│   ├── main.py
 │   ├── routers/
-│   │   ├── __init__.py
-│   │   └── crimes.py
 │   ├── schemas/
-│   │   ├── __init__.py
-│   │   ├── base_schema.py
-│   │   ├── operacional_schema.py
-│   │   ├── preconceito.py
-│   │   └── vitima_schema.py
 │   └── services/
-│       ├── __init__.py
-│       └── crime_service.py
 ├── database/
-│   ├── dados.json
-│   └── tiposOcorrencias.json
 ├── docs/
-│   ├── api.md
-│   ├── architecture.md
-│   ├── database.md
-│   ├── diario-de-bordo.md
-│   ├── evidencias.csv
-│   ├── ingestion.md
-│   ├── logging.md
-│   ├── marco-1.md
-│   ├── plano-de-acao.md
 │   └── evidencias/
-│       ├── divulgacao-api-seguranca-ce.pdf
-│       ├── prints_mensagens_17-09.pdf
-│       └── teste-aplicacao01.pdf
 ├── ingestion/
-│   ├── config.py
-│   ├── crawler.py
-│   ├── dockerfile
-│   ├── exception.py
-│   ├── pipeline.py
-│   └── processor.py
 ├── tests/
-│   ├── test_crimes.py
 ├── .env.example
 ├── .gitignore
 ├── compose.yml
 ├── LICENSE
 ├── README.md
 └── requirements.txt
+```
+--- 
+## 📊 Status do Projeto
+**Em desenvolvimento.**

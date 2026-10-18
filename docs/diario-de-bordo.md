@@ -133,3 +133,27 @@
 - Implementar registro de acesso (Nikelly);
 - Integrar a aplicação ao banco de dados (Abimael);
 - Criar a tabela de logs (Abimael).
+
+
+---
+### Semana de 18/10
+
+**Quem trabalhou e quanto:**
+- Carlos Abimael Oliveira do Nascimento - 2h00
+
+**O que foi feito:**
+- Criação da tabela `api_request_logs` no Supabase (com índices de performance, RLS ativo e restrição `CHECK` para `client_type`) e atualização da documentação do banco em `docs/database.md` (Abimael);
+- Adição da evidência de tramitação do pedido de licença no e-SIC (`docs/evidencias/tramitacao-esic_13-10.pdf`) e atualização do `docs/evidencias.csv` (Abimael).
+
+**Obstáculo:**
+- Nenhum até o momento.
+
+**Contato com o público:**
+- Acompanhamento da tramitação do protocolo e-SIC junto à SSPDS/CE.
+
+**Evidência coletada:**
+- Histórico de tramitação do e-SIC: `docs/evidencias/tramitacao-esic_13-10.pdf`
+
+**Próxima semana:**
+- Integrar a aplicação ao banco de dados PostgreSQL (Abimael);
+- Implementar registro de acesso na API utilizando a tabela `api_request_logs` (Nikelly).

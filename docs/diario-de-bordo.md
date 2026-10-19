@@ -133,3 +133,26 @@
 - Implementar registro de acesso (Nikelly);
 - Integrar a aplicação ao banco de dados (Abimael);
 - Criar a tabela de logs (Abimael).
+
+---
+### Semana de 19/10
+
+**Quem trabalhou e quanto:** David Lucas Pereira Braga dos Santos — 11h57; Nikelly Santiago da Silva — 1h30; Carlos Abimael Oliveira do Nascimento — 2h
+
+**O que foi feito:**
+
+- Correção dos pontos solicitados pelo professor, estudo e implementação de logs e tratamento de erros no serviço de Ingestion e criação dos testes unitários do serviço (David).
+- Elaboração de 4 guias de fluxo de trabalho: guia de git e github, guia de implementação dos logs, guia de testes e guia de tratamento de erros (David).
+- Revisão de código e alinhamento do entendimento sobre o serviço de Ingestion — coleta de dados da internet vs. banco (Nikelly).
+- Criação da tabela `api_request_logs` no Supabase com índices, RLS e CHECK em `client_type` e atualização do `docs/database.md`; adição da evidência de tramitação do e-SIC em `docs/evidencias/tramitacao-esic_13-10.pdf` e atualização do `docs/evidencias.csv` (Abimael).
+
+**Obstáculo:** David travou ∼1 dia na criação dos testes do Ingestion por erro de módulo não encontrado ao rodar pytest — resolvido. Nikelly travou no entendimento do fluxo de Ingestion (achava que os dados viriam do banco e não da internet) — compreendido nesta semana. Pendência de entendimento sobre falhas em alguns testes unitários.
+
+**Contato com o público:** sem contato nesta semana.
+
+**Evidência coletada:** histórico de tramitação do e-SIC em `docs/evidencias/tramitacao-esic_13-10.pdf`.
+
+**Próxima semana:** 
+Nikelly — implementar registro de acessos da API e sistema de logs na API; 
+Abimael — integrar aplicação ao banco de desenvolvimento; 
+David — implementar o downloader e normalizar os dados para o modelo do banco.

@@ -66,6 +66,17 @@ erDiagram
         numeric peso_entorpecente_kg
         timestamp criado_em
     }
+
+    API_REQUEST_LOGS {
+        bigint id PK
+        uuid request_id
+        timestamptz requested_at
+        varchar method
+        varchar endpoint
+        smallint status_code
+        int duration_ms
+        varchar client_type
+    }
 ```
 
 ---
@@ -134,10 +145,26 @@ Tabela unificada que armazena todas as ocorrências de segurança pública extra
 
 ---
 
+### 3.4. Tabela: `api_request_logs`
+Armazena o resumo estruturado de cada requisição HTTP processada pela API FastAPI para cálculo de métricas de uso, latência e contabilização do indicador de consultas públicas (excluindo acessos da equipe e de monitoramento).
+
+| Coluna | Tipo | Nulo | Padrão | Descrição |
+| :--- | :--- | :---: | :--- | :--- |
+| `id` | `BIGINT` | Não | Auto-incremental | Chave primária do registro de log (`GENERATED ALWAYS AS IDENTITY`). |
+| `request_id` | `UUID` | Não | - | Identificador único da requisição (retornado no header `X-Request-ID`). |
+| `requested_at` | `TIMESTAMPTZ` | Não | `now()` | Data e hora em que a requisição foi registrada. |
+| `method` | `VARCHAR(10)` | Não | - | Método HTTP utilizado (ex: `GET`, `POST`). |
+| `endpoint` | `VARCHAR(255)` | Não | - | Caminho da rota acessada sem query string (ex: `/api/v1/indicadores`). |
+| `status_code` | `SMALLINT` | Não | - | Código de status HTTP retornado (ex: `200`, `404`, `500`). |
+| `duration_ms` | `INTEGER` | Não | - | Tempo de processamento da requisição em milissegundos. |
+| `client_type` | `VARCHAR(20)` | Não | `'unknown'` | Classificação da origem: `'public'`, `'team'`, `'monitoring'` ou `'unknown'`. |
+
+---
+
 ## 4. Decisões Arquiteturais e Justificativas
 
 1. **Tabela Única para Ocorrências (*Single Table*):**  
-   - Facilita os endpoints da API (ex: `GET /v1/indicators?municipio=Fortaleza&ano=2025`), evitando múltiplos `UNION ALL` entre 13 tabelas distintas.  
+   - Facilita os endpoints da API (ex: `GET /v1/indicadores?municipio=Fortaleza&ano=2025`), evitando múltiplos `UNION ALL` entre 13 tabelas distintas.  
    - No PostgreSQL, valores `NULL` não consomem espaço em disco adicional além do bitmap de nulos do cabeçalho.
 2. **Privacidade e Granularidade Territorial:**  
    - A SSPDS/CE não divulga o endereço exato do fato (*local_fato*) por motivos de proteção e segurança da vítima. A localização é limitada a **Município** e **AIS**.
@@ -150,6 +177,10 @@ Tabela unificada que armazena todas as ocorrências de segurança pública extra
    - Acesso anônimo direto (`anon`) via Data API do Supabase desabilitado por padrão.
    - Todo o tráfego de leitura e consumo dos dados deve passar obrigatoriamente pela API FastAPI (onde residem logs, rate limiting e regras de negócio).
    - Apenas o papel interno (`service_role`) e o usuário administrativo (`postgres`) possuem permissões de escrita e leitura direta no banco.
+
+6. **Métricas de Uso Sem Exposição de Dados Pessoais (`api_request_logs`):**
+   - Registra apenas metadados operacionais (`method`, `endpoint`, `status_code`, `duration_ms`, `client_type`), sem coletar endereços IP, cabeçalhos HTTP, tokens ou parâmetros sensíveis (em conformidade com a LGPD).
+   - A restrição `CHECK (client_type IN ('public', 'team', 'monitoring', 'unknown'))` garante que apenas consultas elegíveis sejam contabilizadas nas métricas públicas do projeto, separando testes da equipe e verificações de saúde (*healthchecks*).
 
 ---
 
@@ -170,6 +201,10 @@ CREATE INDEX idx_crimes_ais ON public.ocorrencias_crimes(ais);
 -- Otimização de joins e integridade referencial com a tabela de arquivos
 CREATE INDEX idx_crimes_arquivo_id ON public.ocorrencias_crimes(arquivo_id);
 CREATE INDEX idx_informacoes_arquivo_ingestao_id ON public.informacoes_arquivo(ingestao_id);
+
+-- Otimização de consultas de métricas de uso da API por período e tipo de cliente
+CREATE INDEX idx_api_request_logs_requested_at ON public.api_request_logs(requested_at);
+CREATE INDEX idx_api_request_logs_client_date ON public.api_request_logs(client_type, requested_at);
 ```
 
 ---
@@ -234,22 +269,47 @@ CREATE TABLE public.ocorrencias_crimes (
         REFERENCES public.informacoes_arquivo(id) ON DELETE CASCADE
 );
 
--- 4. Criação dos Índices Estratégicos
+-- 4. Tabela de Métricas e Logs de Requisições da API
+CREATE TABLE public.api_request_logs (
+    id BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
+    request_id UUID NOT NULL,
+    requested_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    method VARCHAR(10) NOT NULL,
+    endpoint VARCHAR(255) NOT NULL,
+    status_code SMALLINT NOT NULL,
+    duration_ms INTEGER NOT NULL,
+    client_type VARCHAR(20) NOT NULL DEFAULT 'unknown'
+        CHECK (
+            client_type IN (
+                'public',
+                'team',
+                'monitoring',
+                'unknown'
+            )
+        ),
+    CONSTRAINT api_request_logs_pkey PRIMARY KEY (id)
+);
+
+-- 5. Criação dos Índices Estratégicos
 CREATE INDEX idx_informacoes_arquivo_ingestao_id ON public.informacoes_arquivo(ingestao_id);
 CREATE INDEX idx_crimes_arquivo_id ON public.ocorrencias_crimes(arquivo_id);
 CREATE INDEX idx_crimes_tipo_data ON public.ocorrencias_crimes(tipo_crime, data_fato);
 CREATE INDEX idx_crimes_municipio ON public.ocorrencias_crimes(municipio);
 CREATE INDEX idx_crimes_ais ON public.ocorrencias_crimes(ais);
+CREATE INDEX idx_api_request_logs_requested_at ON public.api_request_logs(requested_at);
+CREATE INDEX idx_api_request_logs_client_date ON public.api_request_logs(client_type, requested_at);
 
--- 5. Segurança a Nível de Linha (RLS - Row Level Security)
+-- 6. Segurança a Nível de Linha (RLS - Row Level Security)
 ALTER TABLE public.historico_ingestoes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.informacoes_arquivo ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ocorrencias_crimes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.api_request_logs ENABLE ROW LEVEL SECURITY;
 
--- 6. Permissões Explícitas para a Data API (Apenas Backend / Service Role)
+-- 7. Permissões Explícitas para a Data API (Apenas Backend / Service Role)
 -- Bloqueio total para 'anon' (sem comandos GRANT para anon)
 -- Permissão total apenas para serviços autenticados internos
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.historico_ingestoes TO service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.informacoes_arquivo TO service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.ocorrencias_crimes TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.api_request_logs TO service_role;
 ```

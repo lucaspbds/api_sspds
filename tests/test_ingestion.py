@@ -33,7 +33,6 @@ def test_extrair_links_retorna_todas_as_tags_a():
     ]
 
 def test_crawler_retorna_links_e_tipos_corretamente(caplog, configurar_resposta_http):
-    # O mock e a resposta já estão prontos e ativos aqui graças à fixture!
     resultado = crawler()
 
     assert resultado == [

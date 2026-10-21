@@ -27,22 +27,21 @@ def extrair_links(conteudo_html):
 
 def crawler() -> list:
     """
-    Função responsável por acessar a página da SSPDS e capturar os
-    links dos arquivos disponibilizados na seção de indicadores detalhados, além dos
-    tipos de ocorrências criminais.
+    Acessa a página da SSPDS e captura os links dos arquivos disponibilizados 
+    na seção de indicadores detalhados, além dos tipos de ocorrências criminais.
 
-    Args:
-        Não possui argumentos.
+    Returns:
+        list: Uma lista contendo dois elementos:
+            - links_arquivos (list[str]): Endereços (href) dos arquivos encontrados.
+            - tipos_ocorrencias (list[str]): Textos descritivos correspondentes a cada ocorrência.
 
-    Return:
-        list [links_arquivos, tipos_ocorrencias]: lista contendo os endereços (href) dos arquivos
-        encontrados na seção de indicadores detalhados da página da SSPDS e uma lista dos tipos 
-        de ocorrências.
-
-    Exception:
-        Caso a variável de ambiente necessária para acessar a página
-        da SSPDS não exista, será retornado um erro indicando que a
-        variável de ambiente não foi encontrada.
+    Raises:
+        VariavelAmbienteNaoEncontrada: Se a variável de ambiente obrigatória `url_sspds` não for encontrada.
+        EstruturaCSSDoSiteAlterado: Se o container CSS esperado não for encontrado no HTML da página.
+        requests.exceptions.Timeout: Se o tempo limite da requisição (timeout) for excedido.
+        requests.exceptions.ConnectionError: Se houver falha de conexão com o servidor da SSPDS.
+        requests.exceptions.HTTPError: Se o servidor retornar um código de status HTTP de erro.
+        requests.exceptions.RequestException: Para outros erros genéricos na requisição HTTP.
     """
 
     logger = logging.getLogger(__name__)

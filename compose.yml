@@ -10,6 +10,7 @@ services:
     volumes:
       - ./app:/workspace/app   
       - ./database:/workspace/database #Temporário
+      - ./logging_system:/workspace/logging_system
     working_dir: /workspace
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
@@ -20,6 +21,8 @@ services:
     env_file:
       - .env
     volumes:
-      - ./ingestion:/app
-      - ./database:/database #Temporário
-    command: python pipeline.py
+      - ./ingestion:/workspace/ingestion
+      - ./database:/workspace/ingestion/database #Temporário
+      - ./logging_system:/workspace/logging_system
+    working_dir: /workspace
+    command: python -m ingestion.pipeline

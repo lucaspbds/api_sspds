@@ -247,6 +247,7 @@ api_sspds/
 ├── .gitignore
 ├── compose.yml
 ├── LICENSE
+├── pytest.ini
 ├── README.md
 └── requirements.txt
 ```

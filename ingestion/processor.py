@@ -1,7 +1,7 @@
-import os
 from pathlib import Path
 import pandas as pd
 import json 
+from .config import get_variavel_ambiente
 
 def processor(url: str, tiposOcorrencias:list) -> None:
     """
@@ -28,7 +28,7 @@ def processor(url: str, tiposOcorrencias:list) -> None:
 
 
     # Define o diretório do banco via variável de ambiente (padrão: "database")
-    database_dir = Path(os.getenv("DATABASE_PATH", "database"))
+    database_dir = Path(get_variavel_ambiente("DATABASE_PATH"))
     database_dir.mkdir(parents=True, exist_ok=True)
     # Salva os dados em um arquivo JSON
     with open(database_dir/'dados.json', 'w', encoding='utf-8') as f:

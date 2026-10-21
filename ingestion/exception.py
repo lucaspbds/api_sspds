@@ -1,8 +1,15 @@
 class VariavelAmbienteNaoEncontrada(Exception):
-    def __init__(self, nome_variavel, *args):
+    def __init__(self, nome_variavel):
         self.__nome_variavel = nome_variavel
-        self.__mensagem = "Variável de Ambiente não encontrada"
-        super().__init__(*args)
-        
-    def print_mensagem_erro(self):
-        print(f"{self.__mensagem}:\nNome da variável - {self.__nome_variavel}")
+        self.__mensagem = f"Variável de Ambiente não encontrada:\nNome da variável - {self.__nome_variavel}"
+        super().__init__(self.__mensagem)
+
+class EstruturaCSSDoSiteAlterado(Exception):
+    def __init__(self):
+        self.__mensagem = "O container de indicadores detalhados não foi encontrado no HTML (seletor CSS pode ter mudado)."
+        super().__init__(self.__mensagem)
+
+class ValorInteiroInvalido(Exception):
+    def __init__(self, valor):
+        self.__mensagem = f"O valor recebido ({valor}) não é um valor inteiro válido."
+        super().__init__(self.__mensagem)

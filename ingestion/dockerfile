@@ -1,10 +1,9 @@
 FROM python:3.13.4
 
-WORKDIR /app
+WORKDIR /workspace
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY ./ingestion .
-
-CMD ["python", "pipeline.py"]
+COPY ./ingestion ./ingestion/
+CMD ["python", "-m", "ingestion.pipeline"]

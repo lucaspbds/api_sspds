@@ -2,7 +2,7 @@ from datetime import date, time
 import pandas as pd
 from logging_system.logging_config import configure_logging
 import logging
-from .exception import ColunasAusentesNaPlanilha, DiaInformadoDivergeDoDiaDaSemana
+from .exception import ColunasAusentesNaPlanilha, DiaInformadoDivergeDoDiaDaSemana, tipoOcorrenciaNaoEncontrado
 
 DIAS_SEMANA = [
     "Segunda-feira",
@@ -48,13 +48,14 @@ def normalizar_idade(valor) -> int | None:
     if pd.isna(valor):
         return None
 
-    if isinstance(valor, str) and valor.lower() == "não informada":
+    if isinstance(valor, str) and valor.lower() in ("não informada", "não informado"):
         return None
     
     idade = float(valor)
 
     if not idade.is_integer() or not 0 <= idade <= 130:
-        raise ValueError(f"Idade inválida: {valor}")
+        # raise ValueError(f"Idade inválida: {valor}")
+        logging.warning("Idade inválida: %s", valor)
 
     return int(idade)
 
@@ -86,6 +87,7 @@ def normalizar_quantidadeEntorpecente(valor) -> int | None:
         
     return float(valor)
 
+#NORMALIZADORES PARA CADA TIPO DE OCORRÊNCIA
 def normalizar_cvli(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:str) -> list[dict]:
     """Converte as linhas da aba CVLI para o schema do banco."""
     if arquivo_id <= 0:
@@ -120,7 +122,8 @@ def normalizar_cvli(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:str) -> l
 
             # Não corrigimos silenciosamente divergências na fonte.
             if (dia_informado is not None and dia_informado.lower().replace("-feira", "") != dia_semana.lower().replace("-feira", "")):
-                raise DiaInformadoDivergeDoDiaDaSemana(dia_informado, dia_semana)
+                # raise DiaInformadoDivergeDoDiaDaSemana(dia_informado, dia_semana)
+                logging.warning("Dia informado '%s' diverge da data (%s)", dia_informado, dia_semana)
 
             municipio = normalizar_texto(linha["Município"])
 
@@ -183,7 +186,8 @@ def normalizar_animais_CVP_Furto_Incendio_Salvamento(df: pd.DataFrame, arquivo_i
     
             # Não corrigimos silenciosamente divergências na fonte.
             if (dia_informado is not None and dia_informado.lower().replace("-feira", "") != dia_semana.lower().replace("-feira", "")):
-                raise DiaInformadoDivergeDoDiaDaSemana(dia_informado, dia_semana)
+                # raise DiaInformadoDivergeDoDiaDaSemana(dia_informado, dia_semana)
+                logging.warning("Dia informado '%s' diverge da data (%s)", dia_informado, dia_semana)
     
             municipio = normalizar_texto(linha["Município"])
     
@@ -246,7 +250,8 @@ def normalizar_armaDeFogo(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:str
     
             # Não corrigimos silenciosamente divergências na fonte.
             if (dia_informado is not None and dia_informado.lower().replace("-feira", "") != dia_semana.lower().replace("-feira", "")):
-                raise DiaInformadoDivergeDoDiaDaSemana(dia_informado, dia_semana)
+                # raise DiaInformadoDivergeDoDiaDaSemana(dia_informado, dia_semana)
+                logging.warning("Dia informado '%s' diverge da data (%s)", dia_informado, dia_semana)
     
             municipio = normalizar_texto(linha["Município"])
     
@@ -313,7 +318,8 @@ def normalizar_preconceitoRacaOuCor_crimesSexuais_indigenas_leiMariaDaPenha(df: 
 
             # Não corrigimos silenciosamente divergências na fonte.
             if (dia_informado is not None and dia_informado.lower().replace("-feira", "") != dia_semana.lower().replace("-feira", "")):
-                raise DiaInformadoDivergeDoDiaDaSemana(dia_informado, dia_semana)
+                # raise DiaInformadoDivergeDoDiaDaSemana(dia_informado, dia_semana)
+                logging.warning("Dia informado '%s' diverge da data (%s)", dia_informado, dia_semana)
 
             municipio = normalizar_texto(linha["Município"])
 
@@ -378,8 +384,9 @@ def normalizar_entorpecentes(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:
     
             # Não corrigimos silenciosamente divergências na fonte.
             if (dia_informado is not None and dia_informado.lower().replace("-feira", "") != dia_semana.lower().replace("-feira", "")):
-                raise DiaInformadoDivergeDoDiaDaSemana(dia_informado, dia_semana)
-    
+                # raise DiaInformadoDivergeDoDiaDaSemana(dia_informado, dia_semana)
+                logging.warning("Dia informado '%s' diverge da data (%s)", dia_informado, dia_semana)
+
             municipio = normalizar_texto(linha["Município"])
     
             if municipio is None:
@@ -406,7 +413,7 @@ def normalizar_entorpecentes(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:
             }
 
             registros.append(registro)
-        except (ValueError, TypeError, OverflowError, ColunasAusentesNaPlanilha) as erro:
+        except (ValueError, TypeError, OverflowError, ColunasAusentesNaPlanilha, DiaInformadoDivergeDoDiaDaSemana) as erro:
             logging.exception("Erro ao normalizar a linha %s: %s", numero_linha, erro)
             raise 
         
@@ -447,7 +454,8 @@ def normalizar_homofobiaETransfobia(df: pd.DataFrame, arquivo_id: int, tipo_ocor
 
             # Não corrigimos silenciosamente divergências na fonte.
             if (dia_informado is not None and dia_informado.lower().replace("-feira", "") != dia_semana.lower().replace("-feira", "")):
-                raise DiaInformadoDivergeDoDiaDaSemana(dia_informado, dia_semana)
+                # raise DiaInformadoDivergeDoDiaDaSemana(dia_informado, dia_semana)
+                logging.warning("Dia informado '%s' diverge da data (%s)", dia_informado, dia_semana)
 
             municipio = normalizar_texto(linha["Município"])
 
@@ -477,7 +485,7 @@ def normalizar_homofobiaETransfobia(df: pd.DataFrame, arquivo_id: int, tipo_ocor
 
             registros.append(registro)
 
-        except (ValueError, TypeError, OverflowError, ColunasAusentesNaPlanilha) as erro:
+        except (ValueError, TypeError, OverflowError, ColunasAusentesNaPlanilha, DiaInformadoDivergeDoDiaDaSemana) as erro:
             logging.exception("Erro ao normalizar a linha %s: %s", numero_linha, erro)
             raise 
 
@@ -488,13 +496,42 @@ def normalizer(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:str) -> list[d
     logging.getLogger(__name__)
 
     logging.info("Iniciando a normalização dos dados: %s", tipo_ocorrencia)
-    if tipo_ocorrencia == "cvli":
-        return normalizar_cvli(df, arquivo_id, tipo_ocorrencia)
 
-df = pd.read_excel(r"ingestion\tempfile\Salvamento_Agosto.xlsx")
-# arquivo_id = 1 
-# tipo_ocorrencia = 'animais'
-# print(normalizer(df, arquivo_id, tipo_ocorrencia)[0])
+    #Lista dos tipos de ocorrências que utilizam o mesmo processo de normalização
+    list_animais_CVP_Furto_Incendio_Salvamento = [
+        "CRIME DE MAUS-TRATOS A ANIMAIS",
+        "CRIMES VIOLENTOS CONTRA O PATRIMÔNIO - CVP",
+        "FURTO",
+        "INCÊNDIO",
+        "BUSCA E SALVAMENTO"
+    ]
 
-print(df.info())
-print(df.describe())
+    list_preconceitoRacaOuCor_crimesSexuais_indigenas_leiMariaDaPenha = [
+        "CRIME OU PRECONCEITO DE RAÇA OU DE COR",
+        "CRIMES SEXUAIS",
+        "INDÍGENAS VÍTIMAS DE CRIMES",
+        "LEI 11.340/06 (LEI MARIA DA PENHA)"
+    ]
+    try:
+        if tipo_ocorrencia == "CRIMES VIOLENTOS LETAIS E INTENCIONAIS - CVLI":
+            return normalizar_cvli(df, arquivo_id, tipo_ocorrencia)
+        
+        elif tipo_ocorrencia == "APREENSÃO DE ARMAS DE FOGO":
+            return normalizar_armaDeFogo(df, arquivo_id, tipo_ocorrencia)
+
+        elif tipo_ocorrencia == "APREENSÃO DE ENTORPECENTES":
+            return normalizar_entorpecentes(df, arquivo_id, tipo_ocorrencia)
+
+        elif tipo_ocorrencia == "HOMOFOBIA E TRANSFOBIA":
+            return normalizar_homofobiaETransfobia(df, arquivo_id, tipo_ocorrencia)
+
+        elif tipo_ocorrencia in list_animais_CVP_Furto_Incendio_Salvamento:
+            return normalizar_animais_CVP_Furto_Incendio_Salvamento(df, arquivo_id, tipo_ocorrencia)
+        
+        elif tipo_ocorrencia in list_preconceitoRacaOuCor_crimesSexuais_indigenas_leiMariaDaPenha:
+            return normalizar_preconceitoRacaOuCor_crimesSexuais_indigenas_leiMariaDaPenha(df, arquivo_id, tipo_ocorrencia)
+        
+        else:
+            raise tipoOcorrenciaNaoEncontrado(tipo_ocorrencia)
+    except(ValueError, TypeError, OverflowError, ColunasAusentesNaPlanilha, DiaInformadoDivergeDoDiaDaSemana, tipoOcorrenciaNaoEncontrado) as erro:
+        logging.exception("Falha na normalização: %s", erro)

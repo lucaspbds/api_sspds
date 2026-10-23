@@ -13,3 +13,13 @@ class ValorInteiroInvalido(Exception):
     def __init__(self, valor):
         self.__mensagem = f"O valor recebido ({valor}) não é um valor inteiro válido."
         super().__init__(self.__mensagem)
+
+class ColunasAusentesNaPlanilha(Exception):
+    def __init__(self, colunasFaltantes):
+        self.__mensagem = f"Colunas ausentes na planilha: {colunasFaltantes}"
+        super().__init__(self.__mensagem)
+
+class DiaInformadoDivergeDoDiaDaSemana(Exception):
+    def __init__(self, dia_informado, dia_semana):
+        self.__mensagem = f"Dia informado '{dia_informado}' diverge da data ({dia_semana})"
+        super().__init__(self.__mensagem)

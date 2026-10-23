@@ -22,7 +22,7 @@ services:
       - .env
     volumes:
       - ./ingestion:/workspace/ingestion
-      - ./database:/workspace/ingestion/database #Temporário
+      - ./database:/workspace/database #Temporário
       - ./logging_system:/workspace/logging_system
     working_dir: /workspace
     command: python -m ingestion.pipeline

@@ -5,5 +5,8 @@ WORKDIR /workspace
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY ./ingestion ./ingestion/
+COPY ingestion/ ./ingestion/
+COPY database/ ./database/
+COPY logging_system/ ./logging_system/
+
 CMD ["python", "-m", "ingestion.pipeline"]

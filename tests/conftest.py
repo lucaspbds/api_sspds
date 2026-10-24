@@ -3,6 +3,7 @@ import ingestion.crawler as modulo_crawler
 from ingestion.crawler import crawler, extrair_links
 from ingestion.exception import VariavelAmbienteNaoEncontrada
 from unittest.mock import Mock, patch
+from database.repository import criar_cliente_supabase
 
 @pytest.fixture
 def html_sspds():
@@ -52,3 +53,12 @@ def configurar_resposta_http(html_sspds):
         mock_get.return_value = resposta
         yield resposta  # Retorna a resposta configurada para o teste, se ele precisar
 
+
+@pytest.fixture(scope="function")
+def banco_local():
+    """
+    Fixture que fornece uma instância do cliente Supabase conectada ao banco local.
+    """
+    cliente = criar_cliente_supabase()
+    yield cliente
+    cliente = None

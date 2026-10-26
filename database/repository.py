@@ -3,7 +3,8 @@ from typing import Any, Dict, List, Optional, Union
 import httpx
 from supabase import Client, ClientOptions, create_client
 
-from database.config import configure_logging, get_variavel_ambiente
+from logging_system.logging_config import configure_logging
+from database.config import get_variavel_ambiente
 from database.exceptions import (
     ErroConexaoBanco,
     ErroOperacaoBanco,
@@ -13,11 +14,21 @@ from database.exceptions import (
 configure_logging()
 logger = logging.getLogger("database.repository")
 
-
 def criar_cliente_supabase() -> Client:
     """
     Inicializa e retorna o cliente de conexão com o Supabase
-    configurando o cliente HTTP (httpx) com timeout explícito.
+    configurando o cliente HTTP (httpx) com timeout explícito de 10 segundos.
+
+    Args:
+        Nenhum.
+
+    Returns:
+        Client: Instância autenticada do cliente Supabase.
+
+    Raises:
+        VariavelAmbienteNaoEncontrada: Se as variáveis obrigatórias 'SUPABASE_URL'
+            ou 'SUPABASE_KEY' não estiverem definidas no ambiente.
+        ErroConexaoBanco: Se ocorrer falha ao inicializar o cliente do Supabase.
     """
     try:
         url = get_variavel_ambiente("SUPABASE_URL")
@@ -36,7 +47,19 @@ def criar_cliente_supabase() -> Client:
 
 def validar_conexao(cliente: Optional[Client] = None) -> bool:
     """
-    Valida se a conexão com o banco está ativa realizando uma leitura leve.
+    Valida se a conexão com o banco de dados está ativa realizando uma leitura leve.
+
+    Args:
+        cliente (Optional[Client]): Instância opcional do cliente Supabase já criada.
+            Caso omitido, um novo cliente será instanciado automaticamente.
+
+    Returns:
+        bool: True se a comunicação com o banco ocorrer com sucesso.
+
+    Raises:
+        VariavelAmbienteNaoEncontrada: Se 'cliente' não for informado e faltar
+            variável de ambiente ao criar a conexão.
+        ErroConexaoBanco: Se houver falha na comunicação ou autenticação com o banco.
     """
     db = cliente or criar_cliente_supabase()
     try:
@@ -57,6 +80,22 @@ def consultar_registros(
 ) -> List[Dict[str, Any]]:
     """
     Realiza leitura (SELECT) em uma tabela do banco com filtros e limite opcionais.
+
+    Args:
+        tabela (str): Nome da tabela a ser consultada no banco de dados.
+        filtros (Optional[Dict[str, Any]]): Dicionário de pares {coluna: valor}
+            para filtrar os registros por igualdade.
+        limite (Optional[int]): Quantidade máxima de registros a serem retornados
+            (deve ser maior que zero).
+        colunas (str): Colunas a serem selecionadas separadas por vírgula (padrão '*').
+        cliente (Optional[Client]): Instância opcional do cliente Supabase.
+
+    Returns:
+        List[Dict[str, Any]]: Lista de dicionários representando os registros encontrados.
+
+    Raises:
+        ValueError: Se o nome da tabela for vazio ou se o limite for menor ou igual a zero.
+        ErroOperacaoBanco: Se ocorrer falha na execução da consulta junto ao Supabase.
     """
     if not tabela or not tabela.strip():
         logger.error("Tentativa de consulta com nome de tabela vazio")
@@ -98,6 +137,20 @@ def inserir_registros(
 ) -> List[Dict[str, Any]]:
     """
     Realiza inserção (INSERT) de um ou mais registros em uma tabela do banco.
+
+    Args:
+        tabela (str): Nome da tabela onde os dados serão inseridos.
+        dados (Union[Dict[str, Any], List[Dict[str, Any]]]): Dicionário (para um
+            único registro) ou lista de dicionários (para inserção em lote).
+        cliente (Optional[Client]): Instância opcional do cliente Supabase.
+
+    Returns:
+        List[Dict[str, Any]]: Lista contendo os registros recém-inseridos no banco.
+
+    Raises:
+        ValueError: Se o nome da tabela for vazio ou se 'dados' estiver vazio.
+        ErroOperacaoBanco: Se ocorrer falha de integridade, constraint ou comunicação
+            ao inserir os registros no Supabase.
     """
     if not tabela or not tabela.strip():
         logger.error("Tentativa de inserção com nome de tabela vazio")
@@ -132,6 +185,21 @@ def atualizar_registro(
 ) -> List[Dict[str, Any]]:
     """
     Realiza atualização (UPDATE) de um registro específico pelo seu identificador.
+
+    Args:
+        tabela (str): Nome da tabela onde o registro será atualizado.
+        id_registro (int): Identificador único (ID) do registro a ser modificado.
+        novos_dados (Dict[str, Any]): Dicionário contendo as colunas e os novos
+            valores a serem atualizados.
+        coluna_id (str): Nome da coluna chave primária usada no filtro (padrão 'id').
+        cliente (Optional[Client]): Instância opcional do cliente Supabase.
+
+    Returns:
+        List[Dict[str, Any]]: Lista contendo o registro atualizado retornado pelo banco.
+
+    Raises:
+        ValueError: Se o nome da tabela for vazio ou se 'novos_dados' estiver vazio.
+        ErroOperacaoBanco: Se ocorrer falha durante a atualização no Supabase.
     """
     if not tabela or not tabela.strip():
         logger.error("Tentativa de atualização com nome de tabela vazio")

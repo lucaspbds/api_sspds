@@ -3,7 +3,7 @@ import pandas as pd
 from logging_system.logging_config import configure_logging
 import logging
 from .exception import ColunasAusentesNaPlanilha, tipoOcorrenciaNaoEncontrado
-
+import re
 DIAS_SEMANA = [
     "Segunda-feira",
     "Terça-feira",
@@ -21,6 +21,10 @@ def normalizar_texto(valor):
         return None
 
     texto = str(valor).strip().title()
+
+    # Substituir múltiplos espaços por apenas 1 espaço
+    texto = re.sub(r"\s+", " ", texto)
+
     return texto or None
 
 def normalizar_data(valor) -> date:
@@ -51,6 +55,8 @@ def normalizar_idade(valor) -> int | None:
     if isinstance(valor, str) and valor.lower() in ("não informada", "não informado"):
         return None
     
+    if isinstance(valor, str): 
+        valor = valor.replace(',', '.')
     idade = float(valor)
 
     if not idade.is_integer() or not 0 <= idade <= 130:
@@ -66,11 +72,14 @@ def normalizar_quantidadeArmas(valor) -> int | None:
     
     if isinstance(valor, str) and valor.lower() == "não informada":
         return None
-        
+    
+    if isinstance(valor, str): 
+            valor = valor.replace(',', '.')  
     qtd_armas = float(valor)
     
     if not qtd_armas.is_integer():
-        raise ValueError(f"Quantidade de armas inválido: {valor}")
+        logging.warning("Quantidade de armas inválidas: %s", valor)
+        return None
     
     return int(qtd_armas)
 
@@ -81,9 +90,14 @@ def normalizar_quantidadeEntorpecente(valor) -> int | None:
     
     if isinstance(valor, str) and valor.lower() == "não informada":
         return None
+    if isinstance(valor, str): 
+            valor = valor.replace(',', '.')
+    try:
+        return float(valor)
+    except:
+        logging.warning("Quantidade de entorpecentes inválidos: %s", valor)
+        return None
         
-    return float(valor.replace(',', '.'))
-
 #NORMALIZADORES PARA CADA TIPO DE OCORRÊNCIA
 def normalizar_cvli(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:str) -> list[dict]:
     """Converte as linhas da aba CVLI para o schema do banco."""

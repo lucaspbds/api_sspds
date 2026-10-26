@@ -156,3 +156,21 @@
 Nikelly — implementar registro de acessos da API e sistema de logs na API; 
 Abimael — integrar aplicação ao banco de desenvolvimento; 
 David — implementar o downloader e normalizar os dados para o modelo do banco.
+
+---
+### Semana de 24/10
+
+**Quem trabalhou e quanto:** David Lucas Pereira Braga dos Santos — 7h20; Nikelly Santiago da Silva — 4h30; Carlos Abimael Oliveira do Nascimento — 2h59
+
+**O que foi feito:**
+
+- Atualização da documentação do Ingestion com novas funcionalidades e criação da função de normalização dos dados (David).
+- Criação do pacote `database/` para integração com PostgreSQL/Supabase: `database/exceptions.py` com exceções de domínio, `database/config.py` com carregamento seguro de `SUPABASE_URL`/`KEY` e logs, `database/repository.py` com `criar_cliente_supabase` (timeout 10s), `validar_conexao`, `consultar_registros`, `inserir_registros` e `atualizar_registro` com logs estruturados; suíte de testes em `tests/test_database.py` e fixture `banco_local` em `tests/conftest.py` cobrindo filtros, borda de idade nula, constraints CHECK, `pytest.raises` e `caplog`; atualização de `.env.example`, `requirements.txt` (`supabase==2.33.0`) e `docs/database.md` com `GRANT` para `service_role`; guia interno de banco local via Supabase CLI (Abimael).
+- Tratamento básico de erros na API, escrita inicial de logs de erros e revisão de código (Nikelly).
+
+**Obstáculo:** David encontrou dados inconsistentes nas tabelas (idades > 130 e divergência entre dia da semana informado e data). Aguardando retorno do professor sobre como proceder — ainda em aberto.
+
+**Contato com o público:** sem contato nesta semana.
+**Evidência coletada:** sem evidência nova nesta semana.
+
+**Próxima semana:** David — fazer testes unitários da normalização e atualizar documentação, implementar downloader e identificação por hash, corrigir erro de certificação no crawler; Abimael — fazer alterações indicadas no Pull Request; Nikelly — implementar registro de acessos da API e integrar API ao banco de dados.

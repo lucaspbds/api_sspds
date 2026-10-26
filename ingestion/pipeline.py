@@ -29,9 +29,12 @@ def pipeline() -> None:
         logger.info("Crawler concluído com sucesso")
 
     logger.info("Processamento dos dados iniciado")
+
+    
     # O primeiro arquivo encontrado é enviado para o processador,
     # que realiza a leitura da planilha e sua conversão para JSON.
-    processor(lista_url[0], tipos_ocorrencias)
+    
+    # processor(lista_url[0], tipos_ocorrencias)
     logger.info("Processamento dos dados finalizado")
 
 

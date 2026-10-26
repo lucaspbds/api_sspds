@@ -51,6 +51,7 @@ erDiagram
         varchar tipo_crime
         varchar municipio
         varchar ais
+        varchar local_fato
         date data_fato
         time hora_fato
         varchar dia_semana
@@ -128,6 +129,7 @@ Tabela unificada que armazena todas as ocorrências de segurança pública extra
 | `tipo_crime` | `VARCHAR(60)` | Não | - | Identificador do crime (ex: `furto`, `cvli`, `entorpecentes`). |
 | `municipio` | `VARCHAR(100)` | Não | - | Município do fato (ex: `Fortaleza`, `Caucaia`). |
 | `ais` | `VARCHAR(30)` | Sim | `NULL` | Área Integrada de Segurança (ex: `AIS 01`). |
+| `local_fato` | `VARCHAR(150)` | Sim | `NULL` | Tipo de local quando informado (ex: via pública, comércio). |
 | `data_fato` | `DATE` | Não | - | Data em que o fato ocorreu. |
 | `hora_fato` | `TIME` | Sim | `NULL` | Horário da ocorrência. |
 | `dia_semana` | `VARCHAR(30)` | Sim | `NULL` | Dia da semana (ex: `Segunda-feira`). |
@@ -166,8 +168,8 @@ Armazena o resumo estruturado de cada requisição HTTP processada pela API Fast
 1. **Tabela Única para Ocorrências (*Single Table*):**  
    - Facilita os endpoints da API (ex: `GET /v1/indicadores?municipio=Fortaleza&ano=2025`), evitando múltiplos `UNION ALL` entre 13 tabelas distintas.  
    - No PostgreSQL, valores `NULL` não consomem espaço em disco adicional além do bitmap de nulos do cabeçalho.
-2. **Privacidade e Granularidade Territorial:**  
-   - A SSPDS/CE não divulga o endereço exato do fato (*local_fato*) por motivos de proteção e segurança da vítima. A localização é limitada a **Município** e **AIS**.
+2. **Privacidade, Granularidade Territorial e Campo local_fato:**  
+   - A SSPDS/CE geralmente restringe os dados espaciais a **Município** e **AIS** por privacidade. Contudo, em indicadores específicos (como Homofobia e Transfobia), a SSPDS fornece a tipologia do local (ex: via pública, residência, estabelecimento comercial). Por isso, a coluna local_fato é opcional (aceita NULL).
 3. **Idempotência por Hash SHA-256:**  
    - A coluna `hash_sha256` na tabela de arquivos impede o reprocessamento de planilhas inalteradas e acusa republicações com correções retroativas feitas pelo órgão emissor.
 4. **Integridade Referencial com `ON DELETE CASCADE`:**  
@@ -250,6 +252,7 @@ CREATE TABLE public.ocorrencias_crimes (
     tipo_crime VARCHAR(60) NOT NULL,
     municipio VARCHAR(100) NOT NULL,
     ais VARCHAR(30),
+    local_fato VARCHAR(150),
     data_fato DATE NOT NULL,
     hora_fato TIME,
     dia_semana VARCHAR(30),

@@ -14,6 +14,7 @@ from database.exceptions import (
 configure_logging()
 logger = logging.getLogger("database.repository")
 
+
 def criar_cliente_supabase() -> Client:
     """
     Inicializa e retorna o cliente de conexão com o Supabase

@@ -36,7 +36,7 @@ def criar_cliente_supabase() -> Client:
         key = get_variavel_ambiente("SUPABASE_KEY")
         opcoes = ClientOptions(httpx_client=httpx.Client(timeout=10.0))
         cliente = create_client(url, key, options=opcoes)
-        logger.info("Cliente Supabase inicializado com sucesso url=%s", url)
+        logger.info("Cliente Supabase inicializado com sucesso")
         return cliente
     except VariavelAmbienteNaoEncontrada as e:
         logger.error("Configuração ausente ao conectar ao banco: %s", e)

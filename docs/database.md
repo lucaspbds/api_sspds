@@ -51,6 +51,7 @@ erDiagram
         varchar tipo_crime
         varchar municipio
         varchar ais
+        varchar local_fato
         date data_fato
         time hora_fato
         varchar dia_semana
@@ -128,6 +129,7 @@ Tabela unificada que armazena todas as ocorrências de segurança pública extra
 | `tipo_crime` | `VARCHAR(60)` | Não | - | Identificador do crime (ex: `furto`, `cvli`, `entorpecentes`). |
 | `municipio` | `VARCHAR(100)` | Não | - | Município do fato (ex: `Fortaleza`, `Caucaia`). |
 | `ais` | `VARCHAR(30)` | Sim | `NULL` | Área Integrada de Segurança (ex: `AIS 01`). |
+| `local_fato` | `VARCHAR(150)` | Sim | `NULL` | Tipo de local quando informado (ex: via pública, comércio). |
 | `data_fato` | `DATE` | Não | - | Data em que o fato ocorreu. |
 | `hora_fato` | `TIME` | Sim | `NULL` | Horário da ocorrência. |
 | `dia_semana` | `VARCHAR(30)` | Sim | `NULL` | Dia da semana (ex: `Segunda-feira`). |
@@ -166,8 +168,8 @@ Armazena o resumo estruturado de cada requisição HTTP processada pela API Fast
 1. **Tabela Única para Ocorrências (*Single Table*):**  
    - Facilita os endpoints da API (ex: `GET /v1/indicadores?municipio=Fortaleza&ano=2025`), evitando múltiplos `UNION ALL` entre 13 tabelas distintas.  
    - No PostgreSQL, valores `NULL` não consomem espaço em disco adicional além do bitmap de nulos do cabeçalho.
-2. **Privacidade e Granularidade Territorial:**  
-   - A SSPDS/CE não divulga o endereço exato do fato (*local_fato*) por motivos de proteção e segurança da vítima. A localização é limitada a **Município** e **AIS**.
+2. **Privacidade, Granularidade Territorial e Campo local_fato:**  
+   - A SSPDS/CE geralmente restringe os dados espaciais a **Município** e **AIS** por privacidade. Contudo, em indicadores específicos (como Homofobia e Transfobia), a SSPDS fornece a tipologia do local (ex: via pública, residência, estabelecimento comercial). Por isso, a coluna local_fato é opcional (aceita NULL).
 3. **Idempotência por Hash SHA-256:**  
    - A coluna `hash_sha256` na tabela de arquivos impede o reprocessamento de planilhas inalteradas e acusa republicações com correções retroativas feitas pelo órgão emissor.
 4. **Integridade Referencial com `ON DELETE CASCADE`:**  
@@ -250,6 +252,7 @@ CREATE TABLE public.ocorrencias_crimes (
     tipo_crime VARCHAR(60) NOT NULL,
     municipio VARCHAR(100) NOT NULL,
     ais VARCHAR(30),
+    local_fato VARCHAR(150),
     data_fato DATE NOT NULL,
     hora_fato TIME,
     dia_semana VARCHAR(30),
@@ -312,4 +315,105 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.historico_ingestoes TO service_ro
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.informacoes_arquivo TO service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.ocorrencias_crimes TO service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.api_request_logs TO service_role;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO service_role;
 ```
+
+---
+
+## 7. Camada de Acesso a Dados (`database/`)
+
+A integração da aplicação Python (API e Ingestion) com o banco de dados Supabase é centralizada no pacote `database/`, que encapsula a conexão autenticada via `service_role`, as operações CRUD, o registro de logs estruturados (`logging_system`) e o tratamento de exceções.
+
+### Estrutura de Arquivos
+
+```text
+database/
+├── __init__.py        # Inicializador do pacote
+├── config.py          # Leitura e validação de variáveis de ambiente (.env)
+├── exceptions.py      # Exceções customizadas da camada de banco de dados
+└── repository.py      # Funções de conexão, leitura, inserção e atualização
+```
+
+---
+
+### 7.1. `database/config.py`
+
+Carrega e valida as variáveis de ambiente obrigatórias do arquivo `.env` utilizando `python-dotenv`.
+
+#### `get_variavel_ambiente(nome_variavel: str) -> str`
+- **Descrição:** Recupera o valor de uma variável de ambiente obrigatória, removendo espaços extras nas extremidades.
+- **Parâmetros:**
+  - `nome_variavel` (`str`): Nome da chave no arquivo `.env` (ex: `'SUPABASE_URL'`, `'SUPABASE_KEY'`).
+- **Retorno:** `str` — O valor atribuído à variável de ambiente.
+- **Exceções:**
+  - `VariavelAmbienteNaoEncontrada`: Disparada caso a variável não exista ou esteja vazia.
+
+---
+
+### 7.2. `database/exceptions.py`
+
+Define as exceções customizadas de domínio para padronizar o tratamento de falhas no acesso ao banco:
+
+- **`VariavelAmbienteNaoEncontrada(Exception)`**: Disparada quando uma variável de ambiente obrigatória (`SUPABASE_URL` ou `SUPABASE_KEY`) não é encontrada. Armazena o atributo `nome_variavel`.
+- **`ErroConexaoBanco(Exception)`**: Disparada quando não é possível inicializar o cliente ou estabelecer comunicação com o Supabase.
+- **`ErroOperacaoBanco(Exception)`**: Disparada quando uma operação de leitura (`consulta`), inserção (`insercao`) ou atualização (`atualizacao`) falha no banco de dados. Armazena os atributos `operacao` e `tabela`.
+
+---
+
+### 7.3. `database/repository.py`
+
+Módulo principal responsável pelas operações de conexão e persistência no Supabase, utilizando `httpx.Client(timeout=10.0)` e o logger `database.repository`.
+
+#### `criar_cliente_supabase() -> Client`
+- **Descrição:** Inicializa e retorna o cliente de conexão com o Supabase utilizando `SUPABASE_URL` e `SUPABASE_KEY`, configurando o cliente HTTP (`httpx`) com timeout explícito de 10 segundos.
+- **Parâmetros:** Nenhum.
+- **Retorno:** `Client` — Instância autenticada do cliente Supabase.
+- **Exceções:**
+  - `VariavelAmbienteNaoEncontrada`: Se `SUPABASE_URL` ou `SUPABASE_KEY` não estiverem definidas.
+  - `ErroConexaoBanco`: Se ocorrer falha ao inicializar o cliente do Supabase.
+
+#### `validar_conexao(cliente: Optional[Client] = None) -> bool`
+- **Descrição:** Valida se a conexão com o banco de dados está ativa realizando uma consulta leve (`SELECT id LIMIT 1`) na tabela `historico_ingestoes`.
+- **Parâmetros:**
+  - `cliente` (`Optional[Client]`): Instância opcional do cliente Supabase já criada. Caso omitido, um novo cliente é instanciado automaticamente.
+- **Retorno:** `bool` — `True` se a comunicação com o banco ocorrer com sucesso.
+- **Exceções:**
+  - `VariavelAmbienteNaoEncontrada`: Se `cliente` não for informado e faltar variável de ambiente ao criar a conexão.
+  - `ErroConexaoBanco`: Se houver falha na comunicação ou autenticação com o banco de dados.
+
+#### `consultar_registros(tabela: str, filtros: Optional[Dict[str, Any]] = None, limite: Optional[int] = None, colunas: str = "*", cliente: Optional[Client] = None) -> List[Dict[str, Any]]`
+- **Descrição:** Realiza uma operação de leitura (`SELECT`) em uma tabela do banco com suporte a filtros de igualdade e limite de registros.
+- **Parâmetros:**
+  - `tabela` (`str`): Nome da tabela a ser consultada no banco de dados.
+  - `filtros` (`Optional[Dict[str, Any]]`): Dicionário opcional de pares `{coluna: valor}` para filtrar os registros (`WHERE coluna = valor`).
+  - `limite` (`Optional[int]`): Quantidade máxima de registros a serem retornados (deve ser maior que zero).
+  - `colunas` (`str`): Colunas a serem selecionadas separadas por vírgula (padrão `'*'`).
+  - `cliente` (`Optional[Client]`): Instância opcional do cliente Supabase.
+- **Retorno:** `List[Dict[str, Any]]` — Lista de dicionários representando os registros encontrados.
+- **Exceções:**
+  - `ValueError`: Se o nome da tabela for vazio ou se `limite` for menor ou igual a zero.
+  - `ErroOperacaoBanco`: Se ocorrer falha durante a execução da consulta no Supabase.
+
+#### `inserir_registros(tabela: str, dados: Union[Dict[str, Any], List[Dict[str, Any]]], cliente: Optional[Client] = None) -> List[Dict[str, Any]]`
+- **Descrição:** Realiza a inserção (`INSERT`) de um único registro ou de múltiplos registros em lote em uma tabela do banco.
+- **Parâmetros:**
+  - `tabela` (`str`): Nome da tabela onde os dados serão inseridos.
+  - `dados` (`Union[Dict[str, Any], List[Dict[str, Any]]]`): Dicionário (para 1 registro) ou lista de dicionários (para inserção em lote).
+  - `cliente` (`Optional[Client]`): Instância opcional do cliente Supabase.
+- **Retorno:** `List[Dict[str, Any]]` — Lista contendo os registros recém-inseridos retornados pelo banco (incluindo os `id`s gerados).
+- **Exceções:**
+  - `ValueError`: Se o nome da tabela for vazio ou se `dados` estiver vazio.
+  - `ErroOperacaoBanco`: Se ocorrer falha de integridade, violação de constraint (`CHECK`, `UNIQUE`, `FOREIGN KEY`) ou erro de comunicação com o Supabase.
+
+#### `atualizar_registro(tabela: str, id_registro: int, novos_dados: Dict[str, Any], coluna_id: str = "id", cliente: Optional[Client] = None) -> List[Dict[str, Any]]`
+- **Descrição:** Realiza a atualização (`UPDATE`) de um registro específico filtrado pela sua chave identificadora.
+- **Parâmetros:**
+  - `tabela` (`str`): Nome da tabela onde o registro será atualizado.
+  - `id_registro` (`int`): Valor do identificador único do registro a ser modificado.
+  - `novos_dados` (`Dict[str, Any]`): Dicionário contendo as colunas e os novos valores a serem atualizados.
+  - `coluna_id` (`str`): Nome da coluna identificadora usada no filtro (padrão `'id'`).
+  - `cliente` (`Optional[Client]`): Instância opcional do cliente Supabase.
+- **Retorno:** `List[Dict[str, Any]]` — Lista contendo o registro atualizado retornado pelo banco.
+- **Exceções:**
+  - `ValueError`: Se o nome da tabela for vazio ou se `novos_dados` estiver vazio.
+  - `ErroOperacaoBanco`: Se ocorrer falha durante a atualização no Supabase.

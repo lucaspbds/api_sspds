@@ -2,7 +2,7 @@ from datetime import date, time
 import pandas as pd
 from logging_system.logging_config import configure_logging
 import logging
-from .exception import ColunasAusentesNaPlanilha, DiaInformadoDivergeDoDiaDaSemana, tipoOcorrenciaNaoEncontrado
+from .exception import ColunasAusentesNaPlanilha, tipoOcorrenciaNaoEncontrado
 
 DIAS_SEMANA = [
     "Segunda-feira",
@@ -54,8 +54,8 @@ def normalizar_idade(valor) -> int | None:
     idade = float(valor)
 
     if not idade.is_integer() or not 0 <= idade <= 130:
-        # raise ValueError(f"Idade inválida: {valor}")
         logging.warning("Idade inválida: %s", valor)
+        return None
 
     return int(idade)
 
@@ -79,13 +79,10 @@ def normalizar_quantidadeEntorpecente(valor) -> int | None:
     if pd.isna(valor):
             return None
     
-    if isinstance(valor, str):
-        if valor.lower() == "não informada":
-            return None
-        else:
-            raise ValueError(f"Quantidade de entorpecente inválido: {valor}")
+    if isinstance(valor, str) and valor.lower() == "não informada":
+        return None
         
-    return float(valor)
+    return float(valor.replace(',', '.'))
 
 #NORMALIZADORES PARA CADA TIPO DE OCORRÊNCIA
 def normalizar_cvli(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:str) -> list[dict]:
@@ -120,9 +117,12 @@ def normalizar_cvli(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:str) -> l
             dia_informado = normalizar_texto(linha["Dia da Semana"])
             dia_semana = DIAS_SEMANA[data_fato.weekday()]
 
+            st_dia_semana_divergente = False
             # Não corrigimos silenciosamente divergências na fonte.
             if (dia_informado is not None and dia_informado.lower().replace("-feira", "") != dia_semana.lower().replace("-feira", "")):
-                # raise DiaInformadoDivergeDoDiaDaSemana(dia_informado, dia_semana)
+                #Caso a data diverge do dia da semana informado, o valor será True, caso contário,
+                #permanecerá False
+                st_dia_semana_divergente = True
                 logging.warning("Dia informado '%s' diverge da data (%s)", dia_informado, dia_semana)
 
             municipio = normalizar_texto(linha["Município"])
@@ -137,7 +137,7 @@ def normalizar_cvli(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:str) -> l
                 "ais": normalizar_texto(linha["AIS"]),
                 "data_fato": data_fato,
                 "hora_fato": normalizar_hora(linha["Hora"]),
-                "dia_semana": dia_semana,
+                "dia_semana": dia_informado,
                 "natureza": normalizar_texto(linha["Natureza"]),
                 "meio_empregado": normalizar_texto(linha["Meio Empregado"]),
                 "vitima_genero": normalizar_texto(linha["Gênero"]),
@@ -148,6 +148,7 @@ def normalizar_cvli(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:str) -> l
                 "quantidade_armas": None,
                 "tipo_entorpecente": None,
                 "peso_entorpecente_kg": None,
+                "st_dia_semana_divergente": st_dia_semana_divergente
             }
 
             registros.append(registro)
@@ -183,10 +184,13 @@ def normalizar_animais_CVP_Furto_Incendio_Salvamento(df: pd.DataFrame, arquivo_i
             data_fato = normalizar_data(linha["Data"])
             dia_informado = normalizar_texto(linha["Dia da Semana"])
             dia_semana = DIAS_SEMANA[data_fato.weekday()]
-    
+            st_dia_semana_divergente = False
+
             # Não corrigimos silenciosamente divergências na fonte.
             if (dia_informado is not None and dia_informado.lower().replace("-feira", "") != dia_semana.lower().replace("-feira", "")):
-                # raise DiaInformadoDivergeDoDiaDaSemana(dia_informado, dia_semana)
+                #Caso a data diverge do dia da semana informado, o valor será True, caso contário,
+                #permanecerá False
+                st_dia_semana_divergente = True
                 logging.warning("Dia informado '%s' diverge da data (%s)", dia_informado, dia_semana)
     
             municipio = normalizar_texto(linha["Município"])
@@ -201,7 +205,7 @@ def normalizar_animais_CVP_Furto_Incendio_Salvamento(df: pd.DataFrame, arquivo_i
                 "ais": normalizar_texto(linha["AIS"]),
                 "data_fato": data_fato,
                 "hora_fato": normalizar_hora(linha["Hora"]),
-                "dia_semana": dia_semana,
+                "dia_semana": dia_informado,
                 "natureza": None,
                 "meio_empregado": None,
                 "vitima_genero": None,
@@ -212,6 +216,7 @@ def normalizar_animais_CVP_Furto_Incendio_Salvamento(df: pd.DataFrame, arquivo_i
                 "quantidade_armas": None,
                 "tipo_entorpecente": None,
                 "peso_entorpecente_kg": None,
+                "st_dia_semana_divergente": st_dia_semana_divergente
             }
 
             registros.append(registro)
@@ -247,10 +252,13 @@ def normalizar_armaDeFogo(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:str
             data_fato = normalizar_data(linha["Data"])
             dia_informado = normalizar_texto(linha["Dia da Semana"])
             dia_semana = DIAS_SEMANA[data_fato.weekday()]
-    
+            st_dia_semana_divergente = False
+
             # Não corrigimos silenciosamente divergências na fonte.
             if (dia_informado is not None and dia_informado.lower().replace("-feira", "") != dia_semana.lower().replace("-feira", "")):
-                # raise DiaInformadoDivergeDoDiaDaSemana(dia_informado, dia_semana)
+                #Caso a data diverge do dia da semana informado, o valor será True, caso contário,
+                #permanecerá False
+                st_dia_semana_divergente = True
                 logging.warning("Dia informado '%s' diverge da data (%s)", dia_informado, dia_semana)
     
             municipio = normalizar_texto(linha["Município"])
@@ -265,7 +273,7 @@ def normalizar_armaDeFogo(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:str
                 "ais": normalizar_texto(linha["AIS"]),
                 "data_fato": data_fato,
                 "hora_fato": normalizar_hora(linha["Hora"]),
-                "dia_semana": dia_semana,
+                "dia_semana": dia_informado,
                 "natureza": None,
                 "meio_empregado": None,
                 "vitima_genero": None,
@@ -276,6 +284,7 @@ def normalizar_armaDeFogo(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:str
                 "quantidade_armas": normalizar_quantidadeArmas(linha["Quantidade"]),
                 "tipo_entorpecente": None,
                 "peso_entorpecente_kg": None,
+                "st_dia_semana_divergente": st_dia_semana_divergente
             }
 
             registros.append(registro)
@@ -315,10 +324,13 @@ def normalizar_preconceitoRacaOuCor_crimesSexuais_indigenas_leiMariaDaPenha(df: 
             data_fato = normalizar_data(linha["Data"])
             dia_informado = normalizar_texto(linha["Dia da Semana"])
             dia_semana = DIAS_SEMANA[data_fato.weekday()]
+            st_dia_semana_divergente = False
 
             # Não corrigimos silenciosamente divergências na fonte.
             if (dia_informado is not None and dia_informado.lower().replace("-feira", "") != dia_semana.lower().replace("-feira", "")):
-                # raise DiaInformadoDivergeDoDiaDaSemana(dia_informado, dia_semana)
+                #Caso a data diverge do dia da semana informado, o valor será True, caso contário,
+                #permanecerá False
+                st_dia_semana_divergente = True
                 logging.warning("Dia informado '%s' diverge da data (%s)", dia_informado, dia_semana)
 
             municipio = normalizar_texto(linha["Município"])
@@ -333,7 +345,7 @@ def normalizar_preconceitoRacaOuCor_crimesSexuais_indigenas_leiMariaDaPenha(df: 
                 "ais": normalizar_texto(linha["AIS"]),
                 "data_fato": data_fato,
                 "hora_fato": normalizar_hora(linha["Hora"]),
-                "dia_semana": dia_semana,
+                "dia_semana": dia_informado,
                 "natureza": None,
                 "meio_empregado": None,
                 "vitima_genero": normalizar_texto(linha["Gênero"]),
@@ -344,6 +356,7 @@ def normalizar_preconceitoRacaOuCor_crimesSexuais_indigenas_leiMariaDaPenha(df: 
                 "quantidade_armas": None,
                 "tipo_entorpecente": None,
                 "peso_entorpecente_kg": None,
+                "st_dia_semana_divergente": st_dia_semana_divergente
             }
 
             registros.append(registro)
@@ -381,10 +394,13 @@ def normalizar_entorpecentes(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:
             data_fato = normalizar_data(linha["Data"])
             dia_informado = normalizar_texto(linha["Dia da Semana"])
             dia_semana = DIAS_SEMANA[data_fato.weekday()]
+            st_dia_semana_divergente = False
     
             # Não corrigimos silenciosamente divergências na fonte.
             if (dia_informado is not None and dia_informado.lower().replace("-feira", "") != dia_semana.lower().replace("-feira", "")):
-                # raise DiaInformadoDivergeDoDiaDaSemana(dia_informado, dia_semana)
+                #Caso a data diverge do dia da semana informado, o valor será True, caso contário,
+                #permanecerá False
+                st_dia_semana_divergente = True
                 logging.warning("Dia informado '%s' diverge da data (%s)", dia_informado, dia_semana)
 
             municipio = normalizar_texto(linha["Município"])
@@ -399,7 +415,7 @@ def normalizar_entorpecentes(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:
                 "ais": normalizar_texto(linha["AIS"]),
                 "data_fato": data_fato,
                 "hora_fato": normalizar_hora(linha["Hora"]),
-                "dia_semana": dia_semana,
+                "dia_semana": dia_informado,
                 "natureza": None,
                 "meio_empregado": None,
                 "vitima_genero": None,
@@ -410,10 +426,11 @@ def normalizar_entorpecentes(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:
                 "quantidade_armas": None,
                 "tipo_entorpecente": normalizar_texto(linha["Tipo de Entorpecente"]),
                 "peso_entorpecente_kg": normalizar_quantidadeEntorpecente(linha["Quantidade (Kg)"]),
+                "st_dia_semana_divergente": st_dia_semana_divergente
             }
 
             registros.append(registro)
-        except (ValueError, TypeError, OverflowError, ColunasAusentesNaPlanilha, DiaInformadoDivergeDoDiaDaSemana) as erro:
+        except (ValueError, TypeError, OverflowError, ColunasAusentesNaPlanilha) as erro:
             logging.exception("Erro ao normalizar a linha %s: %s", numero_linha, erro)
             raise 
         
@@ -451,10 +468,13 @@ def normalizar_homofobiaETransfobia(df: pd.DataFrame, arquivo_id: int, tipo_ocor
             data_fato = normalizar_data(linha["Data"])
             dia_informado = normalizar_texto(linha["Dia da Semana"])
             dia_semana = DIAS_SEMANA[data_fato.weekday()]
+            st_dia_semana_divergente = False
 
             # Não corrigimos silenciosamente divergências na fonte.
             if (dia_informado is not None and dia_informado.lower().replace("-feira", "") != dia_semana.lower().replace("-feira", "")):
-                # raise DiaInformadoDivergeDoDiaDaSemana(dia_informado, dia_semana)
+                #Caso a data diverge do dia da semana informado, o valor será True, caso contário,
+                #permanecerá False
+                st_dia_semana_divergente = True
                 logging.warning("Dia informado '%s' diverge da data (%s)", dia_informado, dia_semana)
 
             municipio = normalizar_texto(linha["Município"])
@@ -470,7 +490,7 @@ def normalizar_homofobiaETransfobia(df: pd.DataFrame, arquivo_id: int, tipo_ocor
                 "data_fato": data_fato,
                 "hora_fato": normalizar_hora(linha["Hora"]),
                 "local_fato": normalizar_texto(linha["Local"]),
-                "dia_semana": dia_semana,
+                "dia_semana": dia_informado,
                 "natureza": normalizar_texto(linha["Natureza"]),
                 "meio_empregado": None,
                 "vitima_genero": normalizar_texto(linha["Identidade de Gênero"]),
@@ -481,17 +501,44 @@ def normalizar_homofobiaETransfobia(df: pd.DataFrame, arquivo_id: int, tipo_ocor
                 "quantidade_armas": None,
                 "tipo_entorpecente": None,
                 "peso_entorpecente_kg": None,
+                "st_dia_semana_divergente": st_dia_semana_divergente
             }
 
             registros.append(registro)
 
-        except (ValueError, TypeError, OverflowError, ColunasAusentesNaPlanilha, DiaInformadoDivergeDoDiaDaSemana) as erro:
+        except (ValueError, TypeError, OverflowError, ColunasAusentesNaPlanilha) as erro:
             logging.exception("Erro ao normalizar a linha %s: %s", numero_linha, erro)
             raise 
 
     return registros
 
 def normalizer(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:str) -> list[dict]:
+    """
+    Roteia e encaminha o DataFrame para o normalizador específico do tipo de ocorrência.
+
+    A função identifica o tipo de ocorrência informado e direciona os dados para a 
+    rotina de normalização correspondente. Esses normalizadores são responsáveis por 
+    adequar os dados ao schema do banco de dados (tratando dados inválidos e ajustando 
+    os tipos corretos), transformando-os ao final em uma lista de dicionários prontos 
+    para serem persistidos no banco.
+
+    Args:
+        df (pd.DataFrame): DataFrame contendo os dados brutos a serem tratados.
+        arquivo_id (int): Chave estrangeira (Foreign Key) que identifica o arquivo 
+            de origem dos dados, fazendo referência à tabela que armazena as informações 
+            do arquivo.
+        tipo_ocorrencia (str): Categoria da ocorrência que define qual regra 
+            de normalização será aplicada.
+
+    Returns:
+        list[dict]: Lista de dicionários com os dados normalizados, estruturados 
+        conforme o schema do banco de dados.
+
+    Exception:
+        tipoOcorrenciaNaoEncontrado: Se o tipo de ocorrência não estiver mapeado.
+        ColunasAusentesNaPlanilha: Se o DataFrame não contiver as colunas esperadas.
+        ValueError, TypeError, OverflowError: Erros de conversão ou estouro numérico.
+    """
     configure_logging()
     logging.getLogger(__name__)
 
@@ -533,5 +580,6 @@ def normalizer(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:str) -> list[d
         
         else:
             raise tipoOcorrenciaNaoEncontrado(tipo_ocorrencia)
-    except(ValueError, TypeError, OverflowError, ColunasAusentesNaPlanilha, DiaInformadoDivergeDoDiaDaSemana, tipoOcorrenciaNaoEncontrado) as erro:
+        
+    except(ValueError, TypeError, OverflowError, ColunasAusentesNaPlanilha, tipoOcorrenciaNaoEncontrado) as erro:
         logging.exception("Falha na normalização: %s", erro)

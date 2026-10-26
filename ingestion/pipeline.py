@@ -33,7 +33,8 @@ def pipeline() -> None:
     
     # O primeiro arquivo encontrado é enviado para o processador,
     # que realiza a leitura da planilha e sua conversão para JSON.
-    processor(lista_url[0], tipos_ocorrencias)
+    
+    # processor(lista_url[0], tipos_ocorrencias)
     logger.info("Processamento dos dados finalizado")
 
 

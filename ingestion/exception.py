@@ -19,12 +19,7 @@ class ColunasAusentesNaPlanilha(Exception):
         self.__mensagem = f"Colunas ausentes na planilha: {colunasFaltantes}"
         super().__init__(self.__mensagem)
 
-class DiaInformadoDivergeDoDiaDaSemana(Exception):
-    def __init__(self, dia_informado, dia_semana):
-        self.__mensagem = f"Dia informado '{dia_informado}' diverge da data ({dia_semana})"
-        super().__init__(self.__mensagem)
-
 class tipoOcorrenciaNaoEncontrado(Exception):
     def __init__(self, tipo_ocorrencia):
-        self.__mensagem = f""
+        self.__mensagem = f"Tipo de ocorrência não encontrado!({tipo_ocorrencia})"
         super().__init__(self.__mensagem)

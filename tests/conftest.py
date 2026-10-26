@@ -2,6 +2,7 @@ import pytest
 import ingestion.crawler as modulo_crawler
 from unittest.mock import Mock, patch
 import pandas as pd
+from database.repository import criar_cliente_supabase
 
 @pytest.fixture
 def html_sspds():
@@ -115,3 +116,12 @@ def df_homofobia(df_animais):
     df["Orientação Sexual"] = "heterossexual"
     df["Local"] = "via pública"
     return df
+
+@pytest.fixture(scope="function")
+def banco_local():
+    """
+    Fixture que fornece uma instância do cliente Supabase conectada ao banco local.
+    """
+    cliente = criar_cliente_supabase()
+    yield cliente
+    cliente = None

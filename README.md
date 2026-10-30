@@ -22,7 +22,7 @@ A ingestão dos dados depende da disponibilidade das páginas e planilhas públi
 
 ## Licença
 
-- **Dados:** Aguardando o retorno do e-SIC.
+- **Dados:** Dados públicos abertos sob o **Decreto Estadual nº 36.746/2025** e a **Lei Federal nº 12.527/2011 (LAI)**, com livre utilização, consumo, cruzamento e redistribuição mediante atribuição da fonte oficial à **Secretaria da Segurança Pública e Defesa Social (SSPDS/CE)** e à **Superintendência de Pesquisa e Estratégia de Segurança Pública (SUPESP)** (conforme manifestação via e-SIC em `docs/evidencias/licenca.pdf`).
 - **Código e material desta equipe:** Licença MIT.
 
 ## O que este produto não faz

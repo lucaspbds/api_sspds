@@ -6,3 +6,5 @@ data,tipo,indicador,canal,quem_de_fora,valor,descricao,arquivo
 2026-09-17, , ,documento,Público geral, ,Documento de apresentação utilizado para divulgação do projeto,docs/evidencias/divulgacao-api-seguranca-ce_18-09.pdf
 2026-10-04,qualitativa,teste do estranho,whatsapp,Irmão do David Lucas,1,Feedback da aplicação em teste com usuário externo,docs/evidencias/teste-aplicacao01_04-10.pdf
 2026-10-13,,,e-sic,SSPDS/SUPESP,,Encaminhamento interno à DIEST e aprovação de prorrogação de prazo pela SUPESP para resposta sobre licença dos dados,docs/evidencias/tramitacao-esic_13-10.pdf
+2026-10-21,,,e-sic,SSPDS/SUPESP,,Resposta final da SUPESP deferindo o uso livre e redistribuição dos dados via API sob o Decreto Estadual nº 36.746/2025 e LAI,docs/evidencias/licenca.pdf
+2026-10-30,,,e-sic,SSPDS/SUPESP,,Envio de solicitacao ao e-SIC notificando inconsistencia entre campos de data e dia da semana nas planilhas estatisticas,docs/evidencias/notificacao-inconsistencia-esic_30-10.pdf

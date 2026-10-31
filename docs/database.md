@@ -134,7 +134,9 @@ Tabela unificada que armazena todas as ocorrências de segurança pública extra
 | `data_fato` | `DATE` | Não | - | Data em que o fato ocorreu. |
 | `hora_fato` | `TIME` | Sim | `NULL` | Horário da ocorrência. |
 | `dia_semana` | `VARCHAR(30)` | Sim | `NULL` | Dia da semana (ex: `Segunda-feira`). |
-| `st_dia_semana_divergente` | `BOOLEAN` | Não | `FALSE` | Indica se o dia da semana informado diverge da data do fato. |
+| `st_dia_semana_divergente` | `BOOLEAN` | Não | `FALSE` | Indica se o dia da semana informado diverge da data do 
+fato. |
+| `st_idade_invalida` | `BOOLEAN` | Não | `FALSE` | Indica se a idade informada na planilha é biologicamente implausível ou inválida (ex: negativa ou superior a 130 anos). |
 | `natureza` | `VARCHAR(150)` | Sim | `NULL` | Tipificação detalhada do delito. |
 | `meio_empregado` | `VARCHAR(100)` | Sim | `NULL` | Instrumento utilizado (ex: `Arma de fogo`). |
 | `vitima_genero` | `VARCHAR(50)` | Sim | `NULL` | Gênero da vítima. |
@@ -259,6 +261,7 @@ CREATE TABLE public.ocorrencias_crimes (
     hora_fato TIME,
     dia_semana VARCHAR(30),
     st_dia_semana_divergente BOOLEAN NOT NULL DEFAULT FALSE,
+    st_idade_invalida BOOLEAN NOT NULL DEFAULT FALSE,
     natureza VARCHAR(150),
     meio_empregado VARCHAR(100),
     vitima_genero VARCHAR(50),

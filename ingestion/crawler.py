@@ -28,12 +28,10 @@ def extrair_links(conteudo_html):
 def crawler() -> list:
     """
     Acessa a página da SSPDS e captura os links dos arquivos disponibilizados 
-    na seção de indicadores detalhados, além dos tipos de ocorrências criminais.
+    na seção de indicadores detalhados.
 
-    Returns:
-        list: Uma lista contendo dois elementos:
-            - links_arquivos (list[str]): Endereços (href) dos arquivos encontrados.
-            - tipos_ocorrencias (list[str]): Textos descritivos correspondentes a cada ocorrência.
+    Return:
+        links_arquivos (list[str]): Endereços (href) dos arquivos encontrados.
 
     Raises:
         VariavelAmbienteNaoEncontrada: Se a variável de ambiente obrigatória `url_sspds` não for encontrada.
@@ -45,6 +43,7 @@ def crawler() -> list:
     """
 
     logger = logging.getLogger(__name__)
+    logger.info("Crawler iniciado")
     try:
         # A URL da SSPDS é obtida através da variável de ambiente
         # para evitar deixar a URL diretamente escrita no código.
@@ -87,13 +86,13 @@ def crawler() -> list:
         links = list(map(extrair_links, container_indicadores_detalhados))[0]
         logger.info("Qtd de links encontrados: %s", len(links))
 
-        #Extrai os tipos de ocorrências que existem
-        tipos_ocorrencias = [link.text.strip() for link in links if link.text]
         # Extrai somente o endereço dos arquivos (atributo href)
         # de cada link encontrado.
         links_arquivos = [link.get('href') for link in links if link.get('href')]
+        if len(links_arquivos) > 0:
+                logger.info("Crawler concluído com sucesso")
 
-        return [links_arquivos, tipos_ocorrencias]
+        return links_arquivos
 
     except VariavelAmbienteNaoEncontrada as VANE:
         logger.exception("Falha crítica de inicialização: %s", VANE)

@@ -6,6 +6,7 @@ from urllib.parse import unquote, urlparse
 
 import requests
 
+from logging_system.logging_config import configure_logging
 from .exception import (
     DownloadConnectionError,
     DownloadError,
@@ -15,6 +16,8 @@ from .exception import (
 )
 from .config import get_variavel_ambiente
 from .helpers import recebeInteiro
+
+configure_logging()
 logger = logging.getLogger(__name__)
 
 TIMEOUT_SECONDS = recebeInteiro(get_variavel_ambiente("DOWNLOADER_TIMEOUT"))

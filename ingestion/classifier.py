@@ -119,26 +119,31 @@ def classificar_tipo_ocorrencia(nome_arquivo: str | Path) -> str:
     return correspondencias[0]
 
 
-def classificar_arquivos(
-    lista_metadados: list[MetadadoArquivo],
-) -> list[MetadadoArquivo]:
+def classificar_arquivo(metadado: MetadadoArquivo) -> MetadadoArquivo:
+    """Enriquece os metadados de um único arquivo com ``tipo_ocorrencia``.
+
+    Preserva as chaves existentes e não altera o dicionário recebido.
+
+    Args:
+        metadado: metadados de um arquivo, incluindo o caminho em ``path``.
+
+    Returns:
+        Uma cópia dos metadados com a categoria canônica adicionada.
+
+    Raises:
+        ValueError: se os metadados não forem um dicionário válido ou não
+            contiverem um caminho não vazio.
+        TipoOcorrenciaNaoIdentificado: se o nome não corresponder exatamente
+            a uma categoria conhecida ou corresponder a mais de uma.
     """
-    Enriquece os metadados retornados por validate_xlsx_files() com
-    `tipo_ocorrencia`, preservando path, sha256 e is_new.
+    if not isinstance(metadado, dict):
+        raise ValueError("Os metadados do arquivo devem ser um dicionário.")
 
-    Retorna uma nova lista e não altera os dicionários recebidos.
-    Interrompe com erro explícito se algum arquivo não puder ser classificado.
-    """
-    arquivos_classificados: list[MetadadoArquivo] = []
+    caminho = metadado.get("path")
+    if not isinstance(caminho, (str, Path)) or not str(caminho).strip():
+        raise ValueError(
+            "Metadado de arquivo sem a chave 'path' válida; não é possível classificá-lo."
+        )
 
-    for metadado in lista_metadados:
-        caminho = metadado.get("path")
-        if not caminho:
-            raise ValueError(
-                "Metadado de arquivo sem a chave 'path'; não é possível classificá-lo."
-            )
-
-        tipo = classificar_tipo_ocorrencia(caminho)
-        arquivos_classificados.append({**metadado, "tipo_ocorrencia": tipo})
-
-    return arquivos_classificados
+    tipo = classificar_tipo_ocorrencia(caminho)
+    return {**metadado, "tipo_ocorrencia": tipo}

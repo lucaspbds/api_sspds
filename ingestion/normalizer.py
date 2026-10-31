@@ -14,6 +14,8 @@ DIAS_SEMANA = [
     "Domingo",
 ]
 
+configure_logging()
+logger = logging.getLogger(__name__)
 
 def normalizar_texto(valor):
     """Remove espaços excedentes sem alterar o conteúdo original."""
@@ -60,7 +62,7 @@ def normalizar_idade(valor) -> int | None:
     idade = float(valor)
 
     if not idade.is_integer() or not 0 <= idade <= 130:
-        logging.warning("Idade inválida: %s", valor)
+        logger.warning("Idade inválida: %s", valor)
         return None
 
     return int(idade)
@@ -78,7 +80,7 @@ def normalizar_quantidadeArmas(valor) -> int | None:
     qtd_armas = float(valor)
     
     if not qtd_armas.is_integer():
-        logging.warning("Quantidade de armas inválidas: %s", valor)
+        logger.warning("Quantidade de armas inválidas: %s", valor)
         return None
     
     return int(qtd_armas)
@@ -95,7 +97,7 @@ def normalizar_quantidadeEntorpecente(valor) -> int | None:
     try:
         return float(valor)
     except:
-        logging.warning("Quantidade de entorpecentes inválidos: %s", valor)
+        logger.warning("Quantidade de entorpecentes inválidos: %s", valor)
         return None
         
 #NORMALIZADORES PARA CADA TIPO DE OCORRÊNCIA
@@ -137,7 +139,7 @@ def normalizar_cvli(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:str) -> l
                 #Caso a data diverge do dia da semana informado, o valor será True, caso contário,
                 #permanecerá False
                 st_dia_semana_divergente = True
-                logging.warning("Dia informado '%s' diverge da data (%s)", dia_informado, dia_semana)
+                logger.warning("Dia informado '%s' diverge da data (%s)", dia_informado, dia_semana)
 
             municipio = normalizar_texto(linha["Município"])
 
@@ -168,7 +170,7 @@ def normalizar_cvli(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:str) -> l
             registros.append(registro)
 
         except (ValueError, TypeError, OverflowError, ColunasAusentesNaPlanilha) as erro:
-            logging.exception("Erro ao normalizar a linha %s: %s", numero_linha, erro)
+            logger.exception("Erro ao normalizar a linha %s: %s", numero_linha, erro)
             raise 
 
     return registros
@@ -205,7 +207,7 @@ def normalizar_animais_CVP_Furto_Incendio_Salvamento(df: pd.DataFrame, arquivo_i
                 #Caso a data diverge do dia da semana informado, o valor será True, caso contário,
                 #permanecerá False
                 st_dia_semana_divergente = True
-                logging.warning("Dia informado '%s' diverge da data (%s)", dia_informado, dia_semana)
+                logger.warning("Dia informado '%s' diverge da data (%s)", dia_informado, dia_semana)
     
             municipio = normalizar_texto(linha["Município"])
     
@@ -235,7 +237,7 @@ def normalizar_animais_CVP_Furto_Incendio_Salvamento(df: pd.DataFrame, arquivo_i
 
             registros.append(registro)
         except (ValueError, TypeError, OverflowError, ColunasAusentesNaPlanilha) as erro:
-            logging.exception("Erro ao normalizar a linha %s: %s", numero_linha, erro)
+            logger.exception("Erro ao normalizar a linha %s: %s", numero_linha, erro)
             raise 
         
     return registros
@@ -273,7 +275,7 @@ def normalizar_armaDeFogo(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:str
                 #Caso a data diverge do dia da semana informado, o valor será True, caso contário,
                 #permanecerá False
                 st_dia_semana_divergente = True
-                logging.warning("Dia informado '%s' diverge da data (%s)", dia_informado, dia_semana)
+                logger.warning("Dia informado '%s' diverge da data (%s)", dia_informado, dia_semana)
     
             municipio = normalizar_texto(linha["Município"])
     
@@ -303,7 +305,7 @@ def normalizar_armaDeFogo(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:str
 
             registros.append(registro)
         except (ValueError, TypeError, OverflowError, ColunasAusentesNaPlanilha) as erro:
-            logging.exception("Erro ao normalizar a linha %s: %s", numero_linha, erro)
+            logger.exception("Erro ao normalizar a linha %s: %s", numero_linha, erro)
             raise 
         
     return registros    
@@ -345,7 +347,7 @@ def normalizar_preconceitoRacaOuCor_crimesSexuais_indigenas_leiMariaDaPenha(df: 
                 #Caso a data diverge do dia da semana informado, o valor será True, caso contário,
                 #permanecerá False
                 st_dia_semana_divergente = True
-                logging.warning("Dia informado '%s' diverge da data (%s)", dia_informado, dia_semana)
+                logger.warning("Dia informado '%s' diverge da data (%s)", dia_informado, dia_semana)
 
             municipio = normalizar_texto(linha["Município"])
 
@@ -376,7 +378,7 @@ def normalizar_preconceitoRacaOuCor_crimesSexuais_indigenas_leiMariaDaPenha(df: 
             registros.append(registro)
 
         except (ValueError, TypeError, OverflowError, ColunasAusentesNaPlanilha) as erro:
-            logging.exception("Erro ao normalizar a linha %s: %s", numero_linha, erro)
+            logger.exception("Erro ao normalizar a linha %s: %s", numero_linha, erro)
             raise 
 
     return registros
@@ -415,7 +417,7 @@ def normalizar_entorpecentes(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:
                 #Caso a data diverge do dia da semana informado, o valor será True, caso contário,
                 #permanecerá False
                 st_dia_semana_divergente = True
-                logging.warning("Dia informado '%s' diverge da data (%s)", dia_informado, dia_semana)
+                logger.warning("Dia informado '%s' diverge da data (%s)", dia_informado, dia_semana)
 
             municipio = normalizar_texto(linha["Município"])
     
@@ -445,7 +447,7 @@ def normalizar_entorpecentes(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:
 
             registros.append(registro)
         except (ValueError, TypeError, OverflowError, ColunasAusentesNaPlanilha) as erro:
-            logging.exception("Erro ao normalizar a linha %s: %s", numero_linha, erro)
+            logger.exception("Erro ao normalizar a linha %s: %s", numero_linha, erro)
             raise 
         
     return registros    
@@ -489,7 +491,7 @@ def normalizar_homofobiaETransfobia(df: pd.DataFrame, arquivo_id: int, tipo_ocor
                 #Caso a data diverge do dia da semana informado, o valor será True, caso contário,
                 #permanecerá False
                 st_dia_semana_divergente = True
-                logging.warning("Dia informado '%s' diverge da data (%s)", dia_informado, dia_semana)
+                logger.warning("Dia informado '%s' diverge da data (%s)", dia_informado, dia_semana)
 
             municipio = normalizar_texto(linha["Município"])
 
@@ -521,7 +523,7 @@ def normalizar_homofobiaETransfobia(df: pd.DataFrame, arquivo_id: int, tipo_ocor
             registros.append(registro)
 
         except (ValueError, TypeError, OverflowError, ColunasAusentesNaPlanilha) as erro:
-            logging.exception("Erro ao normalizar a linha %s: %s", numero_linha, erro)
+            logger.exception("Erro ao normalizar a linha %s: %s", numero_linha, erro)
             raise 
 
     return registros
@@ -553,10 +555,8 @@ def normalizer(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:str) -> list[d
         ColunasAusentesNaPlanilha: Se o DataFrame não contiver as colunas esperadas.
         ValueError, TypeError, OverflowError: Erros de conversão ou estouro numérico.
     """
-    configure_logging()
-    logging.getLogger(__name__)
 
-    logging.info("Iniciando a normalização dos dados: %s", tipo_ocorrencia)
+    logger.info("Iniciando a normalização dos dados: %s", tipo_ocorrencia)
 
     #Lista dos tipos de ocorrências que utilizam o mesmo processo de normalização
     list_animais_CVP_Furto_Incendio_Salvamento = [
@@ -574,6 +574,7 @@ def normalizer(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:str) -> list[d
         "LEI 11.340/06 (LEI MARIA DA PENHA)"
     ]
     try:
+        tipo_ocorrencia = tipo_ocorrencia.replace('–', '-')
         if tipo_ocorrencia == "CRIMES VIOLENTOS LETAIS E INTENCIONAIS - CVLI":
             return normalizar_cvli(df, arquivo_id, tipo_ocorrencia)
         
@@ -596,4 +597,4 @@ def normalizer(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:str) -> list[d
             raise tipoOcorrenciaNaoEncontrado(tipo_ocorrencia)
         
     except(ValueError, TypeError, OverflowError, ColunasAusentesNaPlanilha, tipoOcorrenciaNaoEncontrado) as erro:
-        logging.exception("Falha na normalização: %s", erro)
+        logger.exception("Falha na normalização: %s", erro)

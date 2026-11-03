@@ -174,3 +174,23 @@ David — implementar o downloader e normalizar os dados para o modelo do banco.
 **Evidência coletada:** sem evidência nova nesta semana.
 
 **Próxima semana:** David — fazer testes unitários da normalização e atualizar documentação, implementar downloader e identificação por hash, corrigir erro de certificação no crawler; Abimael — fazer alterações indicadas no Pull Request; Nikelly — implementar registro de acessos da API e integrar API ao banco de dados.
+
+--- 
+### Semana de 31/10
+
+**Quem trabalhou e quanto:** David Lucas Pereira Braga dos Santos — 9h; Nikelly Santiago da Silva — 2h20; Carlos Abimael Oliveira do Nascimento — 40 min
+
+**O que foi feito:**
+
+- Documentação do módulo de ingestion, classificação dos arquivos .xlsx por tipo de ocorrência, download e armazenamento em pasta, verificação se o arquivo é novo, processamento de um arquivo por vez e integração de branches/PRs via merges (David).
+- Implementação de handlers de exceção da API e restauração/ajuste de módulo, documentação e testes relacionados ao banco (Nikelly).
+- Modelagem e banco de dados: inclusão das colunas `st_dia_semana_divergente` e `st_idade_invalida` na tabela `ocorrencias_crimes` para registrar inconsistências detectadas nas planilhas oficiais; atualização da modelagem em `docs/database.md` incluindo MER, dicionário de dados e script DDL completo (Abimael).
+- Ajuste na licença dos dados: atualização da seção de licença no `README.md` com base na resposta final da SUPESP/SSPDS via e-SIC, atribuição formal ao Decreto Estadual nº 36.746/2025 e à Lei Federal nº 12.527/2011 (LAI) e arquivamento da evidência em `docs/evidencias/licenca.pdf` (Abimael).
+
+**Obstáculo:** sem inconsistência nesta semana.
+
+**Contato com o público:** sem contato nesta semana.
+
+**Evidência coletada:** `docs/evidencias/tramitacao-esic_13-10.pdf` — encaminhamento interno à DIEST e aprovação de prorrogação de prazo pela SUPESP para resposta sobre licença dos dados; `docs/evidencias/licenca.pdf` — resposta final da SUPESP deferindo uso livre e redistribuição dos dados via API sob Decreto Estadual nº 36.746/2025 e LAI.
+
+**Próxima semana:** David — fazer testes unitários de `downloader.py`, `classifier.py` e `validator.py` e atualizar `ingestion.md`; Nikelly — implementar registro dos acessos da API e integrar API ao banco de dados.

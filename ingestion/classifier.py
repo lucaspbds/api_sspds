@@ -33,7 +33,7 @@ REGRAS_TIPO_OCORRENCIA: tuple[tuple[str, tuple[str, ...]], ...] = (
     ),
     (
         "APREENSÃO DE ARMAS DE FOGO",
-        ("apreensao de armas de fogo", "armas de fogo", "arma de fogo"),
+        ("apreensao de armas de fogo", "armas de fogo", "arma de fogo", "apreensao de armas"),
     ),
     (
         "APREENSÃO DE ENTORPECENTES",

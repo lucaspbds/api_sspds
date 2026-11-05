@@ -81,7 +81,7 @@ def pipeline() -> None:
                             tipo_ocorrencia=file_classified["tipo_ocorrencia"])
                 
                 inserir_ocorrencias_crimes(dados_normalizados)
-                anos = list(map(lambda dado: datetime.fromisoformat(dado["data_fato"]).year(), dados_normalizados))
+                anos = list(map(lambda dado: datetime.fromisoformat(dado["data_fato"]).year, dados_normalizados))
                 ano_min = min(anos)
                 ano_max = max(anos)
                 if ano_min == ano_max:

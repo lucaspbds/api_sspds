@@ -48,7 +48,7 @@ def normalizar_hora(valor) -> time | None:
         str(valor), errors="raise"
     ).time()
 
-def normalizar_idade(valor) -> int | None:
+def normalizar_idade(valor) -> float | None:
     """Converte idade para inteiro, rejeitando valores inválidos."""
 
     if pd.isna(valor):
@@ -60,7 +60,7 @@ def normalizar_idade(valor) -> int | None:
     if isinstance(valor, str): 
         valor = valor.replace(',', '.')
     idade = float(valor)
-    return int(idade)
+    return idade
 
 def normalizar_quantidadeArmas(valor) -> int | None:
     """Converte quantidade de armas para inteiro, rejeitando valores inválidos"""
@@ -143,6 +143,8 @@ def normalizar_cvli(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:str) -> l
                 if not idade.is_integer() or not 0 <= idade <= 130:
                     logger.warning("Idade inválida: %s", idade)
                     st_idade_invalida = True
+                else:
+                    idade = int(idade)
             municipio = normalizar_texto(linha["Município"])
 
             if municipio is None:
@@ -361,6 +363,8 @@ def normalizar_preconceitoRacaOuCor_crimesSexuais_indigenas_leiMariaDaPenha(df: 
                 if not idade.is_integer() or not 0 <= idade <= 130:
                     logger.warning("Idade inválida: %s", idade)
                     st_idade_invalida = True
+                else:
+                    idade = int(idade)
 
             municipio = normalizar_texto(linha["Município"])
 
@@ -515,6 +519,8 @@ def normalizar_homofobiaETransfobia(df: pd.DataFrame, arquivo_id: int, tipo_ocor
                 if not idade.is_integer() or not 0 <= idade <= 130:
                     logger.warning("Idade inválida: %s", idade)
                     st_idade_invalida = True
+                else:
+                    idade = int(idade)
 
             municipio = normalizar_texto(linha["Município"])
 

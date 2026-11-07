@@ -56,6 +56,7 @@ erDiagram
         time hora_fato
         varchar dia_semana
         boolean st_dia_semana_divergente
+        boolean st_idade_invalida
         varchar natureza
         varchar meio_empregado
         varchar vitima_genero

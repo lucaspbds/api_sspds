@@ -97,7 +97,7 @@ def normalizar_quantidadeEntorpecente(valor) -> int | None:
         
 def normalizar_ais(valor):
     textoNormalizado = normalizar_texto(valor)
-    if "AIS Não Identificada" in textoNormalizado:
+    if textoNormalizado is None or "Ais Não Identificada" in textoNormalizado:
         return None
     return textoNormalizado
 

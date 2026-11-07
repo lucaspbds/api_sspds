@@ -19,6 +19,7 @@ from ingestion.normalizer import (
     normalizar_idade,
     normalizar_quantidadeArmas,
     normalizar_quantidadeEntorpecente,
+    normalizar_ais,
     normalizar_cvli,
     normalizar_animais_CVP_Furto_Incendio_Salvamento,
     normalizar_armaDeFogo,
@@ -165,6 +166,17 @@ def test_normalizar_quantidade_armas(valor, esperado):
 def test_normalizar_quantidade_entorpecente(valor, esperado):
     assert normalizar_quantidadeEntorpecente(valor) == esperado
 
+
+@pytest.mark.parametrize(
+    ("valor", "esperado"),
+    [
+        ("AIS Não Identificada (Fortaleza)", None),
+        ("Ais 1","Ais 1"),
+        (None, None)
+    ],
+)
+def test_normalizar_ais(valor, esperado):
+    assert normalizar_ais(valor) == esperado
 
 def test_normalizar_cvli_monta_registro_normalizado(df_cvli):
     resultado = normalizar_cvli(

@@ -95,6 +95,12 @@ def normalizar_quantidadeEntorpecente(valor) -> int | None:
         logger.warning("Quantidade de entorpecentes inválidos: %s", valor)
         return None
         
+def normalizar_ais(valor):
+    textoNormalizado = normalizar_texto(valor)
+    if "AIS Não Identificada" in textoNormalizado:
+        return None
+    return textoNormalizado
+
 #NORMALIZADORES PARA CADA TIPO DE OCORRÊNCIA
 def normalizar_cvli(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:str) -> list[dict]:
     """Converte as linhas da aba CVLI para o schema do banco."""
@@ -154,7 +160,7 @@ def normalizar_cvli(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:str) -> l
                 "arquivo_id": arquivo_id,
                 "tipo_crime": tipo_ocorrencia,
                 "municipio": municipio,
-                "ais": normalizar_texto(linha["AIS"]),
+                "ais": normalizar_ais(linha["AIS"]),
                 "data_fato": data_fato.isoformat() if data_fato else None,
                 "hora_fato": hora_fato.isoformat() if hora_fato else None,
                 "dia_semana": dia_informado,
@@ -224,7 +230,7 @@ def normalizar_animais_CVP_Furto_Incendio_Salvamento(df: pd.DataFrame, arquivo_i
                 "arquivo_id": arquivo_id,
                 "tipo_crime": tipo_ocorrencia,
                 "municipio": municipio,
-                "ais": normalizar_texto(linha["AIS"]),
+                "ais": normalizar_ais(linha["AIS"]),
                 "data_fato": data_fato.isoformat() if data_fato else None,
                 "hora_fato": hora_fato.isoformat() if hora_fato else None,
                 "dia_semana": dia_informado,
@@ -293,7 +299,7 @@ def normalizar_armaDeFogo(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:str
                 "arquivo_id": arquivo_id,
                 "tipo_crime": tipo_ocorrencia,
                 "municipio": municipio,
-                "ais": normalizar_texto(linha["AIS"]),
+                "ais": normalizar_ais(linha["AIS"]),
                 "data_fato": data_fato.isoformat() if data_fato else None,
                 "hora_fato": hora_fato.isoformat() if hora_fato else None,
                 "dia_semana": dia_informado,
@@ -375,7 +381,7 @@ def normalizar_preconceitoRacaOuCor_crimesSexuais_indigenas_leiMariaDaPenha(df: 
                 "arquivo_id": arquivo_id,
                 "tipo_crime": tipo_ocorrencia,
                 "municipio": municipio,
-                "ais": normalizar_texto(linha["AIS"]),
+                "ais": normalizar_ais(linha["AIS"]),
                 "data_fato": data_fato.isoformat() if data_fato else None,
                 "hora_fato": hora_fato.isoformat() if hora_fato else None,
                 "dia_semana": dia_informado,
@@ -447,7 +453,7 @@ def normalizar_entorpecentes(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:
                 "arquivo_id": arquivo_id,
                 "tipo_crime": tipo_ocorrencia,
                 "municipio": municipio,
-                "ais": normalizar_texto(linha["AIS"]),
+                "ais": normalizar_ais(linha["AIS"]),
                 "data_fato": data_fato.isoformat() if data_fato else None,
                 "hora_fato": hora_fato.isoformat() if hora_fato else None,
                 "dia_semana": dia_informado,
@@ -531,7 +537,7 @@ def normalizar_homofobiaETransfobia(df: pd.DataFrame, arquivo_id: int, tipo_ocor
                 "arquivo_id": arquivo_id,
                 "tipo_crime": tipo_ocorrencia,
                 "municipio": municipio,
-                "ais": normalizar_texto(linha["AIS"]),
+                "ais": normalizar_ais(linha["AIS"]),
                 "data_fato": data_fato.isoformat() if data_fato else None,
                 "hora_fato": hora_fato.isoformat() if hora_fato else None,
                 "local_fato": normalizar_texto(linha["Local"]),

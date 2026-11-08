@@ -98,9 +98,14 @@ def pipeline() -> None:
 
     logger.info("Processamento dos dados finalizado")
     data_fim = datetime.now(timezone.utc).isoformat()
+    if arquivos_falhas > 0:
+        status = "FALHA"
+    else:
+        status = "SUCESSO"
+
     atualizar_historico_ingestoes(id=id_ingestao, dados={
         "data_fim": data_fim,
-        "status": "SUCESSO",   
+        "status": status,
         "qtd_arquivos_processados": arquivos_processados,
         "qtd_arquivos_falhas": arquivos_falhas
     })

@@ -56,3 +56,6 @@ class FileValidationError(IngestionError):
 
 class DatabaseLookupError(IngestionError):
     """Falha ao consultar se um hash já existe no banco de dados."""
+
+class TipoOcorrenciaNaoIdentificado(ValueError):
+    """O nome do arquivo não corresponde a uma categoria conhecida."""

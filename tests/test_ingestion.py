@@ -29,7 +29,6 @@ from ingestion.normalizer import (
     normalizer
 )
 import ingestion.normalizer as modulo_normalizer
-import ingestion.classifier as modulo_classifier
 import ingestion.validator as modulo_validator
 from ingestion.classifier import (
     TipoOcorrenciaNaoIdentificado,

@@ -4,19 +4,19 @@ from .config import get_variavel_ambiente
 from .helpers import recebeInteiro
 
 tamanho_lote = recebeInteiro(get_variavel_ambiente("INSERT_CHUNK_SIZE"))
-def inserir_historico_ingestoes(dados: list[dict[str, any]]) -> int:
+def inserir_historico_ingestoes(dados: dict[str, any]) -> int:
     resposta = inserir_registros(tabela="historico_ingestoes", dados=dados)
     return resposta[0]['id']
 
-def atualizar_historico_ingestoes(id:int, dados: list[dict[str, any]]) -> list[dict[str, any]]:
+def atualizar_historico_ingestoes(id:int, dados: dict[str, any]) -> list[dict[str, any]]:
     resposta = atualizar_registro(tabela="historico_ingestoes", id_registro=id, coluna_id="id", novos_dados=dados)
     return resposta
 
-def inserir_informacoes_arquivo(dados: list[dict[str, any]]) -> int:
+def inserir_informacoes_arquivo(dados: dict[str, any]) -> int:
     resposta = inserir_registros(tabela="informacoes_arquivo", dados=dados)
     return resposta[0]['id']
 
-def atualizar_informacoes_arquivo(id:int, dados: list[dict[str, any]]) -> int:
+def atualizar_informacoes_arquivo(id:int, dados: dict[str, any]) -> int:
     resposta = atualizar_registro(tabela="informacoes_arquivo", id_registro=id, coluna_id="id", novos_dados=dados)
     return resposta[0]['id']
 

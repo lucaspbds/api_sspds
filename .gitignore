@@ -4,4 +4,5 @@ __pycache__
 dados.json
 tiposOcorrencias.json
 .pytest_cache
-tempfile
+tempfiles
+supabase

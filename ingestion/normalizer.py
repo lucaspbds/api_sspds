@@ -48,7 +48,7 @@ def normalizar_hora(valor) -> time | None:
         str(valor), errors="raise"
     ).time()
 
-def normalizar_idade(valor) -> int | None:
+def normalizar_idade(valor) -> float | None:
     """Converte idade para inteiro, rejeitando valores inválidos."""
 
     if pd.isna(valor):
@@ -60,12 +60,7 @@ def normalizar_idade(valor) -> int | None:
     if isinstance(valor, str): 
         valor = valor.replace(',', '.')
     idade = float(valor)
-
-    if not idade.is_integer() or not 0 <= idade <= 130:
-        logger.warning("Idade inválida: %s", valor)
-        return None
-
-    return int(idade)
+    return idade
 
 def normalizar_quantidadeArmas(valor) -> int | None:
     """Converte quantidade de armas para inteiro, rejeitando valores inválidos"""
@@ -100,6 +95,13 @@ def normalizar_quantidadeEntorpecente(valor) -> int | None:
         logger.warning("Quantidade de entorpecentes inválidos: %s", valor)
         return None
         
+def normalizar_ais(valor):
+    """Converte quantidade de entorpecente para float, rejeitando valores inválidos"""
+    textoNormalizado = normalizar_texto(valor)
+    if textoNormalizado is None or "Ais Não Identificada" in textoNormalizado:
+        return None
+    return textoNormalizado
+
 #NORMALIZADORES PARA CADA TIPO DE OCORRÊNCIA
 def normalizar_cvli(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:str) -> list[dict]:
     """Converte as linhas da aba CVLI para o schema do banco."""
@@ -129,6 +131,7 @@ def normalizar_cvli(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:str) -> l
 
     for numero_linha, linha in enumerate(df.to_dict(orient="records")):
         try:
+            hora_fato = normalizar_hora(linha["Hora"])
             data_fato = normalizar_data(linha["Data"])
             dia_informado = normalizar_texto(linha["Dia da Semana"])
             dia_semana = DIAS_SEMANA[data_fato.weekday()]
@@ -140,7 +143,15 @@ def normalizar_cvli(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:str) -> l
                 #permanecerá False
                 st_dia_semana_divergente = True
                 logger.warning("Dia informado '%s' diverge da data (%s)", dia_informado, dia_semana)
-
+            
+            idade = normalizar_idade(linha["Idade da Vítima"])
+            st_idade_invalida = False
+            if idade is not None:
+                if not idade.is_integer() or not 0 <= idade <= 130:
+                    logger.warning("Idade inválida: %s", idade)
+                    st_idade_invalida = True
+                else:
+                    idade = int(idade)
             municipio = normalizar_texto(linha["Município"])
 
             if municipio is None:
@@ -150,21 +161,23 @@ def normalizar_cvli(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:str) -> l
                 "arquivo_id": arquivo_id,
                 "tipo_crime": tipo_ocorrencia,
                 "municipio": municipio,
-                "ais": normalizar_texto(linha["AIS"]),
-                "data_fato": data_fato,
-                "hora_fato": normalizar_hora(linha["Hora"]),
+                "ais": normalizar_ais(linha["AIS"]),
+                "data_fato": data_fato.isoformat() if data_fato else None,
+                "hora_fato": hora_fato.isoformat() if hora_fato else None,
+                "local_fato": None,
                 "dia_semana": dia_informado,
                 "natureza": normalizar_texto(linha["Natureza"]),
                 "meio_empregado": normalizar_texto(linha["Meio Empregado"]),
                 "vitima_genero": normalizar_texto(linha["Gênero"]),
-                "vitima_idade": normalizar_idade(linha["Idade da Vítima"]),
+                "vitima_idade": idade,
                 "vitima_escolaridade": normalizar_texto(linha["Escolaridade da Vítima"]),
                 "vitima_raca": normalizar_texto(linha["Raça da Vítima"]),
                 "vitima_orientacao_sexual": None,
                 "quantidade_armas": None,
                 "tipo_entorpecente": None,
                 "peso_entorpecente_kg": None,
-                "st_dia_semana_divergente": st_dia_semana_divergente
+                "st_dia_semana_divergente": st_dia_semana_divergente,
+                "st_idade_invalida": st_idade_invalida
             }
 
             registros.append(registro)
@@ -197,6 +210,7 @@ def normalizar_animais_CVP_Furto_Incendio_Salvamento(df: pd.DataFrame, arquivo_i
     
     for numero_linha, linha in enumerate(df.to_dict(orient="records")):
         try:
+            hora_fato = normalizar_hora(linha["Hora"])
             data_fato = normalizar_data(linha["Data"])
             dia_informado = normalizar_texto(linha["Dia da Semana"])
             dia_semana = DIAS_SEMANA[data_fato.weekday()]
@@ -218,9 +232,10 @@ def normalizar_animais_CVP_Furto_Incendio_Salvamento(df: pd.DataFrame, arquivo_i
                 "arquivo_id": arquivo_id,
                 "tipo_crime": tipo_ocorrencia,
                 "municipio": municipio,
-                "ais": normalizar_texto(linha["AIS"]),
-                "data_fato": data_fato,
-                "hora_fato": normalizar_hora(linha["Hora"]),
+                "ais": normalizar_ais(linha["AIS"]),
+                "data_fato": data_fato.isoformat() if data_fato else None,
+                "hora_fato": hora_fato.isoformat() if hora_fato else None,
+                "local_fato": None,
                 "dia_semana": dia_informado,
                 "natureza": None,
                 "meio_empregado": None,
@@ -232,7 +247,8 @@ def normalizar_animais_CVP_Furto_Incendio_Salvamento(df: pd.DataFrame, arquivo_i
                 "quantidade_armas": None,
                 "tipo_entorpecente": None,
                 "peso_entorpecente_kg": None,
-                "st_dia_semana_divergente": st_dia_semana_divergente
+                "st_dia_semana_divergente": st_dia_semana_divergente,
+                "st_idade_invalida": None
             }
 
             registros.append(registro)
@@ -265,6 +281,7 @@ def normalizar_armaDeFogo(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:str
     
     for numero_linha, linha in enumerate(df.to_dict(orient="records")):
         try:
+            hora_fato = normalizar_hora(linha["Hora"])
             data_fato = normalizar_data(linha["Data"])
             dia_informado = normalizar_texto(linha["Dia da Semana"])
             dia_semana = DIAS_SEMANA[data_fato.weekday()]
@@ -286,9 +303,10 @@ def normalizar_armaDeFogo(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:str
                 "arquivo_id": arquivo_id,
                 "tipo_crime": tipo_ocorrencia,
                 "municipio": municipio,
-                "ais": normalizar_texto(linha["AIS"]),
-                "data_fato": data_fato,
-                "hora_fato": normalizar_hora(linha["Hora"]),
+                "ais": normalizar_ais(linha["AIS"]),
+                "data_fato": data_fato.isoformat() if data_fato else None,
+                "hora_fato": hora_fato.isoformat() if hora_fato else None,
+                "local_fato": None,
                 "dia_semana": dia_informado,
                 "natureza": None,
                 "meio_empregado": None,
@@ -300,7 +318,8 @@ def normalizar_armaDeFogo(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:str
                 "quantidade_armas": normalizar_quantidadeArmas(linha["Quantidade"]),
                 "tipo_entorpecente": None,
                 "peso_entorpecente_kg": None,
-                "st_dia_semana_divergente": st_dia_semana_divergente
+                "st_dia_semana_divergente": st_dia_semana_divergente,
+                "st_idade_invalida": None
             }
 
             registros.append(registro)
@@ -337,6 +356,7 @@ def normalizar_preconceitoRacaOuCor_crimesSexuais_indigenas_leiMariaDaPenha(df: 
 
     for numero_linha, linha in enumerate(df.to_dict(orient="records")):
         try:
+            hora_fato = normalizar_hora(linha["Hora"])
             data_fato = normalizar_data(linha["Data"])
             dia_informado = normalizar_texto(linha["Dia da Semana"])
             dia_semana = DIAS_SEMANA[data_fato.weekday()]
@@ -349,6 +369,15 @@ def normalizar_preconceitoRacaOuCor_crimesSexuais_indigenas_leiMariaDaPenha(df: 
                 st_dia_semana_divergente = True
                 logger.warning("Dia informado '%s' diverge da data (%s)", dia_informado, dia_semana)
 
+            idade = normalizar_idade(linha["Idade da Vítima"])
+            st_idade_invalida = False
+            if idade is not None:
+                if not idade.is_integer() or not 0 <= idade <= 130:
+                    logger.warning("Idade inválida: %s", idade)
+                    st_idade_invalida = True
+                else:
+                    idade = int(idade)
+
             municipio = normalizar_texto(linha["Município"])
 
             if municipio is None:
@@ -358,21 +387,23 @@ def normalizar_preconceitoRacaOuCor_crimesSexuais_indigenas_leiMariaDaPenha(df: 
                 "arquivo_id": arquivo_id,
                 "tipo_crime": tipo_ocorrencia,
                 "municipio": municipio,
-                "ais": normalizar_texto(linha["AIS"]),
-                "data_fato": data_fato,
-                "hora_fato": normalizar_hora(linha["Hora"]),
+                "ais": normalizar_ais(linha["AIS"]),
+                "data_fato": data_fato.isoformat() if data_fato else None,
+                "hora_fato": hora_fato.isoformat() if hora_fato else None,
                 "dia_semana": dia_informado,
                 "natureza": None,
                 "meio_empregado": None,
+                "local_fato": None,
                 "vitima_genero": normalizar_texto(linha["Gênero"]),
-                "vitima_idade": normalizar_idade(linha["Idade da Vítima"]),
+                "vitima_idade": idade,
                 "vitima_escolaridade": normalizar_texto(linha["Escolaridade da Vítima"]),
                 "vitima_raca": normalizar_texto(linha["Raça da Vítima"]),
                 "vitima_orientacao_sexual": None,
                 "quantidade_armas": None,
                 "tipo_entorpecente": None,
                 "peso_entorpecente_kg": None,
-                "st_dia_semana_divergente": st_dia_semana_divergente
+                "st_dia_semana_divergente": st_dia_semana_divergente,
+                "st_idade_invalida": st_idade_invalida
             }
 
             registros.append(registro)
@@ -407,6 +438,7 @@ def normalizar_entorpecentes(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:
     
     for numero_linha, linha in enumerate(df.to_dict(orient="records")):
         try:
+            hora_fato = normalizar_hora(linha["Hora"])
             data_fato = normalizar_data(linha["Data"])
             dia_informado = normalizar_texto(linha["Dia da Semana"])
             dia_semana = DIAS_SEMANA[data_fato.weekday()]
@@ -428,9 +460,10 @@ def normalizar_entorpecentes(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:
                 "arquivo_id": arquivo_id,
                 "tipo_crime": tipo_ocorrencia,
                 "municipio": municipio,
-                "ais": normalizar_texto(linha["AIS"]),
-                "data_fato": data_fato,
-                "hora_fato": normalizar_hora(linha["Hora"]),
+                "ais": normalizar_ais(linha["AIS"]),
+                "data_fato": data_fato.isoformat() if data_fato else None,
+                "hora_fato": hora_fato.isoformat() if hora_fato else None,
+                "local_fato": None,
                 "dia_semana": dia_informado,
                 "natureza": None,
                 "meio_empregado": None,
@@ -442,7 +475,8 @@ def normalizar_entorpecentes(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:
                 "quantidade_armas": None,
                 "tipo_entorpecente": normalizar_texto(linha["Tipo de Entorpecente"]),
                 "peso_entorpecente_kg": normalizar_quantidadeEntorpecente(linha["Quantidade (Kg)"]),
-                "st_dia_semana_divergente": st_dia_semana_divergente
+                "st_dia_semana_divergente": st_dia_semana_divergente,
+                "st_idade_invalida": None
             }
 
             registros.append(registro)
@@ -481,6 +515,7 @@ def normalizar_homofobiaETransfobia(df: pd.DataFrame, arquivo_id: int, tipo_ocor
 
     for numero_linha, linha in enumerate(df.to_dict(orient="records")):
         try:
+            hora_fato = normalizar_hora(linha["Hora"])
             data_fato = normalizar_data(linha["Data"])
             dia_informado = normalizar_texto(linha["Dia da Semana"])
             dia_semana = DIAS_SEMANA[data_fato.weekday()]
@@ -493,6 +528,15 @@ def normalizar_homofobiaETransfobia(df: pd.DataFrame, arquivo_id: int, tipo_ocor
                 st_dia_semana_divergente = True
                 logger.warning("Dia informado '%s' diverge da data (%s)", dia_informado, dia_semana)
 
+            idade = normalizar_idade(linha["Idade da Vítima"])
+            st_idade_invalida = False
+            if idade is not None:
+                if not idade.is_integer() or not 0 <= idade <= 130:
+                    logger.warning("Idade inválida: %s", idade)
+                    st_idade_invalida = True
+                else:
+                    idade = int(idade)
+
             municipio = normalizar_texto(linha["Município"])
 
             if municipio is None:
@@ -502,22 +546,23 @@ def normalizar_homofobiaETransfobia(df: pd.DataFrame, arquivo_id: int, tipo_ocor
                 "arquivo_id": arquivo_id,
                 "tipo_crime": tipo_ocorrencia,
                 "municipio": municipio,
-                "ais": normalizar_texto(linha["AIS"]),
-                "data_fato": data_fato,
-                "hora_fato": normalizar_hora(linha["Hora"]),
+                "ais": normalizar_ais(linha["AIS"]),
+                "data_fato": data_fato.isoformat() if data_fato else None,
+                "hora_fato": hora_fato.isoformat() if hora_fato else None,
                 "local_fato": normalizar_texto(linha["Local"]),
                 "dia_semana": dia_informado,
                 "natureza": normalizar_texto(linha["Natureza"]),
                 "meio_empregado": None,
                 "vitima_genero": normalizar_texto(linha["Identidade de Gênero"]),
-                "vitima_idade": normalizar_idade(linha["Idade da Vítima"]),
+                "vitima_idade": idade,
                 "vitima_escolaridade": normalizar_texto(linha["Escolaridade da Vítima"]),
                 "vitima_raca": normalizar_texto(linha["Raça da Vítima"]),
                 "vitima_orientacao_sexual": normalizar_texto(linha["Orientação Sexual"]),
                 "quantidade_armas": None,
                 "tipo_entorpecente": None,
                 "peso_entorpecente_kg": None,
-                "st_dia_semana_divergente": st_dia_semana_divergente
+                "st_dia_semana_divergente": st_dia_semana_divergente,
+                "st_idade_invalida": st_idade_invalida
             }
 
             registros.append(registro)
@@ -574,7 +619,6 @@ def normalizer(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:str) -> list[d
         "LEI 11.340/06 (LEI MARIA DA PENHA)"
     ]
     try:
-        tipo_ocorrencia = tipo_ocorrencia.replace('–', '-')
         if tipo_ocorrencia == "CRIMES VIOLENTOS LETAIS E INTENCIONAIS - CVLI":
             return normalizar_cvli(df, arquivo_id, tipo_ocorrencia)
         
@@ -598,3 +642,4 @@ def normalizer(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:str) -> list[d
         
     except(ValueError, TypeError, OverflowError, ColunasAusentesNaPlanilha, tipoOcorrenciaNaoEncontrado) as erro:
         logger.exception("Falha na normalização: %s", erro)
+        raise

@@ -2,17 +2,13 @@ import re
 import unicodedata
 from pathlib import Path
 from typing import TypedDict
-
+from .exception import TipoOcorrenciaNaoIdentificado
 
 class MetadadoArquivo(TypedDict, total=False):
     path: str
     sha256: str
     is_new: bool
     tipo_ocorrencia: str
-
-
-class TipoOcorrenciaNaoIdentificado(ValueError):
-    """O nome do arquivo não corresponde a uma categoria conhecida."""
 
 
 def normalizar_nome(texto: str) -> str:
@@ -33,7 +29,7 @@ REGRAS_TIPO_OCORRENCIA: tuple[tuple[str, tuple[str, ...]], ...] = (
     ),
     (
         "APREENSÃO DE ARMAS DE FOGO",
-        ("apreensao de armas de fogo", "armas de fogo", "arma de fogo"),
+        ("apreensao de armas de fogo", "armas de fogo", "arma de fogo", "apreensao de armas"),
     ),
     (
         "APREENSÃO DE ENTORPECENTES",

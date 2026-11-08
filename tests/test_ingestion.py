@@ -4,11 +4,13 @@ import pytest
 import requests
 from datetime import date, time
 import pandas as pd
+from pathlib import Path
 
 import ingestion.crawler as modulo_crawler
 from ingestion.crawler import crawler, extrair_links
 from ingestion.exception import (EstruturaCSSDoSiteAlterado, VariavelAmbienteNaoEncontrada, 
-                                 ValorInteiroInvalido, ColunasAusentesNaPlanilha)
+                                 ValorInteiroInvalido, ColunasAusentesNaPlanilha, DatabaseLookupError, 
+                                 FileValidationError)
 from ingestion.helpers import recebeInteiro
 from ingestion.normalizer import (
     normalizar_texto,
@@ -17,20 +19,28 @@ from ingestion.normalizer import (
     normalizar_idade,
     normalizar_quantidadeArmas,
     normalizar_quantidadeEntorpecente,
+    normalizar_ais,
     normalizar_cvli,
     normalizar_animais_CVP_Furto_Incendio_Salvamento,
     normalizar_armaDeFogo,
     normalizar_preconceitoRacaOuCor_crimesSexuais_indigenas_leiMariaDaPenha,
     normalizar_entorpecentes,
     normalizar_homofobiaETransfobia,
-    normalizer,
+    normalizer
 )
 import ingestion.normalizer as modulo_normalizer
+import ingestion.validator as modulo_validator
+from ingestion.classifier import (
+    TipoOcorrenciaNaoIdentificado,
+    classificar_tipo_ocorrencia,
+    classificar_arquivo,
+)
 
 # ---------------------------------------------------------
 # 1. HAPPY PATH
 # ---------------------------------------------------------
 
+#CRAWLER
 def test_extrair_links_retorna_todas_as_tags_a():
     from bs4 import BeautifulSoup
 
@@ -54,12 +64,11 @@ def test_extrair_links_retorna_todas_as_tags_a():
 def test_crawler_retorna_links_e_tipos_corretamente(caplog, configurar_resposta_http):
     resultado = crawler()
 
-    assert resultado == [
-        ["/arquivo1.xlsx", "/arquivo2.xlsx"],
-        ["CVLI", "Furto"],
-    ]
+    assert resultado == ["/arquivo1.xlsx", "/arquivo2.xlsx"]
+    
     assert "Qtd de links encontrados: 2" in caplog.text
 
+#HELPERS
 @pytest.mark.parametrize("valor", [1])
 def test_funcao_recebeInteiro_devolve_um_numero_inteiro(valor):
     numero_inteiro = recebeInteiro(valor)
@@ -76,6 +85,8 @@ def test_funcao_recebeInteiro_devolve_um_numero_inteiro(valor):
         (float("nan"), None),
     ],
 )
+
+#NORMALIZER
 def test_normalizar_texto(valor, esperado):
     assert normalizar_texto(valor) == esperado
 
@@ -111,15 +122,13 @@ def test_normalizar_hora(valor, esperado):
         ("não informado", None),
         (None, None),
         (float("nan"), None),
-        ("25", 25),
         (25.0, 25),
         ("0", 0),
         ("130", 130),
-        ("25.5", None),
-        ("-1", None),
-        ("131", None),
-        (2030, None),
-        (5.9, None)
+        ("25.5", 25.5),
+        ("-1", -1),
+        (2030, 2030),
+        (5.9, 5.9)
     ],
 )
 def test_normalizar_idade(valor, esperado, caplog):
@@ -157,6 +166,17 @@ def test_normalizar_quantidade_entorpecente(valor, esperado):
     assert normalizar_quantidadeEntorpecente(valor) == esperado
 
 
+@pytest.mark.parametrize(
+    ("valor", "esperado"),
+    [
+        ("AIS Não Identificada (Fortaleza)", None),
+        ("Ais 1","Ais 1"),
+        (None, None)
+    ],
+)
+def test_normalizar_ais(valor, esperado):
+    assert normalizar_ais(valor) == esperado
+
 def test_normalizar_cvli_monta_registro_normalizado(df_cvli):
     resultado = normalizar_cvli(
         df_cvli, 7, "CRIMES VIOLENTOS LETAIS E INTENCIONAIS - CVLI"
@@ -168,8 +188,8 @@ def test_normalizar_cvli_monta_registro_normalizado(df_cvli):
     assert registro["tipo_crime"] == "CRIMES VIOLENTOS LETAIS E INTENCIONAIS - CVLI"
     assert registro["municipio"] == "Fortaleza"
     assert registro["ais"] == "Ais 1"
-    assert registro["data_fato"] == date(2024, 1, 1)
-    assert registro["hora_fato"] == time(8, 30)
+    assert registro["data_fato"] == date(2024, 1, 1).isoformat()
+    assert registro["hora_fato"] == time(8, 30).isoformat()
     assert registro["natureza"] == "Homicídio"
     assert registro["meio_empregado"] == "Arma De Fogo"
     assert registro["vitima_genero"] == "Masculino"
@@ -249,17 +269,158 @@ def test_normalizer_encaminha_para_funcao_correta(monkeypatch, tipo, funcao):
 
     assert resultado == esperado
 
+#CLASSIFIER
+@pytest.mark.parametrize(
+    ("nome_arquivo", "categoria"),
+    [
+        ("CVLI_2024.xlsx", "CRIMES VIOLENTOS LETAIS E INTENCIONAIS - CVLI"),
+        ("crimes_violentos_letais_e_intencionais.xlsx",
+         "CRIMES VIOLENTOS LETAIS E INTENCIONAIS - CVLI"),
+        ("Apreensão de armas de fogo.xlsx", "APREENSÃO DE ARMAS DE FOGO"),
+        ("armas_de_fogo.xlsx", "APREENSÃO DE ARMAS DE FOGO"),
+        ("Apreensão de entorpecentes.xlsx", "APREENSÃO DE ENTORPECENTES"),
+        ("homofobia_transfobia.xlsx", "HOMOFOBIA E TRANSFOBIA"),
+        ("preconceito_de_raça_ou_cor.xlsx", "CRIME OU PRECONCEITO DE RAÇA OU DE COR"),
+        ("crimes_sexuais.xlsx", "CRIMES SEXUAIS"),
+        ("indígenas_vítimas_de_crimes.xlsx", "INDÍGENAS VÍTIMAS DE CRIMES"),
+        ("Lei Maria da Penha.xlsx", "LEI 11.340/06 (LEI MARIA DA PENHA)"),
+        ("maus-tratos a animais.xlsx", "CRIME DE MAUS-TRATOS A ANIMAIS"),
+        ("crimes_violentos_contra_o_patrimonio.xlsx",
+         "CRIMES VIOLENTOS CONTRA O PATRIMÔNIO - CVP"),
+        ("furtos.xlsx", "FURTO"),
+        ("incêndios.xlsx", "INCÊNDIO"),
+        ("busca_e_salvamento.xlsx", "BUSCA E SALVAMENTO"),
+    ],
+)
+
+def test_classificar_tipo_ocorrencia_identifica_categoria(nome_arquivo, categoria):
+    assert classificar_tipo_ocorrencia(nome_arquivo) == categoria
+
+def test_classificar_tipo_ocorrencia_aceita_caminho_e_usa_apenas_nome():
+    caminho = Path("diretorio") / "CVLI_2024.xlsx"
+    assert classificar_tipo_ocorrencia(caminho) == (
+        "CRIMES VIOLENTOS LETAIS E INTENCIONAIS - CVLI"
+    )
+
+
+def test_classificar_tipo_ocorrencia_ignora_caixa_acentos_e_separadores():
+    assert classificar_tipo_ocorrencia("APREENSAO---DE---ARMAS.xlsx") == (
+        "APREENSÃO DE ARMAS DE FOGO"
+    )
+
+
+def test_classificar_arquivo_enriquece_copia_sem_alterar_metadado_original():
+    metadado = {
+        "path": "dados/CVLI_2024.xlsx",
+        "sha256": "abc123",
+        "is_new": True,
+    }
+
+    resultado = classificar_arquivo(metadado)
+
+    assert resultado == {
+        **metadado,
+        "tipo_ocorrencia": "CRIMES VIOLENTOS LETAIS E INTENCIONAIS - CVLI",
+    }
+    assert resultado is not metadado
+    assert "tipo_ocorrencia" not in metadado
+
+#VALIDATOR
+
+def test_calculate_sha256_calcula_hash_do_arquivo(tmp_path, monkeypatch):
+    arquivo = tmp_path / "dados.xlsx"
+    conteudo = b"conteudo de teste para hash"
+    arquivo.write_bytes(conteudo)
+    monkeypatch.setattr(modulo_validator, "HASH_CHUNK_SIZE", 4)
+
+    import hashlib
+    esperado = hashlib.sha256(conteudo).hexdigest()
+
+    assert modulo_validator.calculate_sha256(arquivo) == esperado
+
+def test_check_hash_in_database_retorna_true_quando_encontra_registro(monkeypatch):
+    consulta = Mock(return_value=[{"id": 1}])
+    monkeypatch.setattr(modulo_validator, "consultar_registros", consulta)
+
+    assert modulo_validator.check_hash_in_database("hash-existente") is True
+    consulta.assert_called_once_with(
+        tabela="informacoes_arquivo",
+        filtros={"hash_sha256": "hash-existente"},
+    )
+
+
+def test_check_hash_in_database_retorna_false_quando_nao_encontra_registro(monkeypatch):
+    monkeypatch.setattr(modulo_validator, "consultar_registros", Mock(return_value=[]))
+
+    assert modulo_validator.check_hash_in_database("hash-novo") is False
+
+
+def test_check_filename_in_database_retorna_id_e_indicador(monkeypatch):
+    consulta = Mock(return_value=[{"id": 42}])
+    monkeypatch.setattr(modulo_validator, "consultar_registros", consulta)
+
+    assert modulo_validator.check_filename_in_database("CVLI.xlsx") == [42, True]
+    consulta.assert_called_once_with(
+        tabela="informacoes_arquivo",
+        filtros={"nome_arquivo": "CVLI.xlsx"},
+    )
+
+
+def test_check_filename_in_database_retorna_none_quando_nao_encontra(monkeypatch):
+    monkeypatch.setattr(modulo_validator, "consultar_registros", Mock(return_value=[]))
+
+    assert modulo_validator.check_filename_in_database("novo.xlsx") == [None, False]
+
+
+def test_validate_xlsx_file_retorna_metadados_completos(tmp_path, monkeypatch):
+    arquivo = tmp_path / "CVLI.xlsx"
+    conteudo = b"planilha xlsx ficticia"
+    arquivo.write_bytes(conteudo)
+    hash_esperado = __import__("hashlib").sha256(conteudo).hexdigest()
+
+    monkeypatch.setattr(modulo_validator, "check_hash_in_database", Mock(return_value=False))
+    monkeypatch.setattr(
+        modulo_validator, "check_filename_in_database", Mock(return_value=[None, False])
+    )
+
+    resultado = modulo_validator.validate_xlsx_file(arquivo)
+
+    assert resultado["name"] == "CVLI.xlsx"
+    assert resultado["sha256"] == hash_esperado
+    assert resultado["is_new"] is True
+    assert resultado["size_bytes"] == len(conteudo)
+    assert resultado["name_exists"] is False
+    assert resultado["id_registro"] is None
+    assert resultado["path"].endswith("CVLI.xlsx")
+
+
+def test_validate_xlsx_file_reconhece_hash_e_nome_existentes(tmp_path, monkeypatch):
+    arquivo = tmp_path / "CVLI.xlsx"
+    arquivo.write_bytes(b"conteudo")
+    monkeypatch.setattr(modulo_validator, "check_hash_in_database", Mock(return_value=True))
+    monkeypatch.setattr(
+        modulo_validator, "check_filename_in_database", Mock(return_value=[17, True])
+    )
+
+    resultado = modulo_validator.validate_xlsx_file(arquivo)
+
+    assert resultado["is_new"] is False
+    assert resultado["name_exists"] is True
+    assert resultado["id_registro"] == 17
+
 
 # ---------------------------------------------------------
 # 2. SAD PATH
 # ---------------------------------------------------------
 
+#HELPERS
 @pytest.mark.parametrize("valor", ["", "abc", None])
 def test_funcao_recebeInteiro_retorna_o_erro_ValorInteiroInvalido(valor):
     with pytest.raises(ValorInteiroInvalido):
         recebeInteiro(valor)
     
 
+#CRAWLER
 @pytest.mark.parametrize("conteudo", [None, "", False])
 def test_extrair_links_retorna_lista_vazia_sem_conteudo(conteudo):
     assert extrair_links(conteudo) == []
@@ -359,6 +520,7 @@ def test_crawler_usa_timeout_padrao_quando_configuracao_invalida(
 
     assert "CRAWLER_TIMEOUT inválido ou não definido" in caplog.text
 
+#NORMALIZER
 def test_normalizar_quantidade_entorpecente_registra_aviso_para_quantidade_invalido(caplog):
     with caplog.at_level(logging.WARNING):
         assert normalizar_quantidadeEntorpecente('abc') is None
@@ -368,12 +530,6 @@ def test_normalizar_quantidade_armas_registra_aviso_para_quantidade_fracionaria(
     with caplog.at_level(logging.WARNING):
         assert normalizar_quantidadeArmas(1.6) is None
     assert "Quantidade de armas inválidas" in caplog.text
-
-
-def test_normalizar_idade_registra_aviso_para_valor_fora_do_intervalo(caplog):
-    with caplog.at_level(logging.WARNING):
-        assert normalizar_idade(150) is None
-    assert "Idade inválida" in caplog.text
 
 def test_normalizar_data_propaga_data_invalida():
     with pytest.raises((ValueError, TypeError)):
@@ -491,3 +647,146 @@ def test_normalizer_registra_erro_de_colunas_ausentes_e_retorna_none(
     # A função normalizer captura a exceção e não a relança.
     assert resultado is None
     assert "Falha na normalização" in caplog.text
+
+#CLASSIFIER
+
+@pytest.mark.parametrize("nome_arquivo", ["", "   "])
+def test_classificar_tipo_ocorrencia_rejeita_nome_vazio(nome_arquivo):
+    with pytest.raises(ValueError, match="nome do arquivo não pode ser vazio"):
+        classificar_tipo_ocorrencia(nome_arquivo)
+
+
+def test_classificar_tipo_ocorrencia_rejeita_categoria_desconhecida():
+    with pytest.raises(TipoOcorrenciaNaoIdentificado, match="Não foi possível identificar"):
+        classificar_tipo_ocorrencia("relatorio_sem_categoria.xlsx")
+
+
+def test_classificar_tipo_ocorrencia_rejeita_mais_de_uma_categoria():
+    with pytest.raises(TipoOcorrenciaNaoIdentificado, match="mais de uma categoria"):
+        classificar_tipo_ocorrencia("CVLI e Furto.xlsx")
+
+
+@pytest.mark.parametrize("metadado", [None, [], "texto", 10])
+def test_classificar_arquivo_rejeita_metadado_que_nao_e_dicionario(metadado):
+    with pytest.raises(ValueError, match="devem ser um dicionário"):
+        classificar_arquivo(metadado)
+
+
+@pytest.mark.parametrize(
+    "metadado",
+    [
+        {},
+        {"path": None},
+        {"path": ""},
+        {"path": "   "},
+        {"path": 123},
+    ],
+)
+def test_classificar_arquivo_rejeita_path_ausente_ou_invalido(metadado):
+    with pytest.raises(ValueError, match="sem a chave 'path' válida"):
+        classificar_arquivo(metadado)
+
+#VALIDATOR
+def test_calculate_sha256_retorna_file_validation_error_quando_arquivo_nao_pode_ser_lido(
+    tmp_path, monkeypatch
+):
+    arquivo = tmp_path / "inexistente.xlsx"
+    monkeypatch.setattr(modulo_validator, "HASH_CHUNK_SIZE", 8)
+
+    with pytest.raises(FileValidationError, match="Não foi possível ler"):
+        modulo_validator.calculate_sha256(arquivo)
+
+
+def test_check_hash_in_database_rejeita_hash_vazio():
+    with pytest.raises(DatabaseLookupError, match="hash consultado não pode ser vazio"):
+        modulo_validator.check_hash_in_database("")
+
+
+@pytest.mark.parametrize("nome", ["", "   ", None, 123])
+def test_check_filename_in_database_rejeita_nome_vazio_ou_invalido(nome):
+    with pytest.raises(DatabaseLookupError, match="nome do arquivo consultado não pode ser vazio"):
+        modulo_validator.check_filename_in_database(nome)
+
+
+def test_check_hash_in_database_encapsula_erro_inesperado_do_banco(monkeypatch):
+    monkeypatch.setattr(
+        modulo_validator, "consultar_registros", Mock(side_effect=RuntimeError("banco indisponível"))
+    )
+
+    with pytest.raises(DatabaseLookupError, match="Falha ao consultar o hash"):
+        modulo_validator.check_hash_in_database("hash")
+
+
+def test_check_filename_in_database_encapsula_erro_inesperado_do_banco(monkeypatch):
+    monkeypatch.setattr(
+        modulo_validator, "consultar_registros", Mock(side_effect=RuntimeError("banco indisponível"))
+    )
+
+    with pytest.raises(DatabaseLookupError, match="Falha ao consultar o nome"):
+        modulo_validator.check_filename_in_database("arquivo.xlsx")
+
+
+def test_check_hash_in_database_propaga_database_lookup_error(monkeypatch):
+    erro = DatabaseLookupError("falha original")
+    monkeypatch.setattr(
+        modulo_validator, "consultar_registros", Mock(side_effect=erro)
+    )
+
+    with pytest.raises(DatabaseLookupError, match="falha original"):
+        modulo_validator.check_hash_in_database("hash")
+
+
+def test_check_filename_in_database_propaga_database_lookup_error(monkeypatch):
+    erro = DatabaseLookupError("falha original")
+    monkeypatch.setattr(
+        modulo_validator, "consultar_registros", Mock(side_effect=erro)
+    )
+
+    with pytest.raises(DatabaseLookupError, match="falha original"):
+        modulo_validator.check_filename_in_database("arquivo.xlsx")
+
+
+def test_validate_xlsx_file_rejeita_arquivo_inexistente(tmp_path):
+    with pytest.raises(FileValidationError, match="Arquivo não encontrado"):
+        modulo_validator.validate_xlsx_file(tmp_path / "nao_existe.xlsx")
+
+
+def test_validate_xlsx_file_rejeita_diretorio(tmp_path):
+    with pytest.raises(FileValidationError, match="não é um arquivo"):
+        modulo_validator.validate_xlsx_file(tmp_path)
+
+
+@pytest.mark.parametrize("nome", ["arquivo.csv", "arquivo.xls", "arquivo.txt"])
+def test_validate_xlsx_file_rejeita_extensao_diferente_de_xlsx(tmp_path, nome):
+    arquivo = tmp_path / nome
+    arquivo.write_bytes(b"conteudo")
+
+    with pytest.raises(FileValidationError, match="não possui extensão XLSX"):
+        modulo_validator.validate_xlsx_file(arquivo)
+
+
+def test_validate_xlsx_file_propaga_erro_ao_consultar_hash(tmp_path, monkeypatch):
+    arquivo = tmp_path / "arquivo.xlsx"
+    arquivo.write_bytes(b"conteudo")
+    monkeypatch.setattr(
+        modulo_validator,
+        "check_hash_in_database",
+        Mock(side_effect=DatabaseLookupError("falha de consulta")),
+    )
+
+    with pytest.raises(DatabaseLookupError, match="falha de consulta"):
+        modulo_validator.validate_xlsx_file(arquivo)
+
+
+def test_validate_xlsx_file_propaga_erro_ao_consultar_nome(tmp_path, monkeypatch):
+    arquivo = tmp_path / "arquivo.xlsx"
+    arquivo.write_bytes(b"conteudo")
+    monkeypatch.setattr(modulo_validator, "check_hash_in_database", Mock(return_value=False))
+    monkeypatch.setattr(
+        modulo_validator,
+        "check_filename_in_database",
+        Mock(side_effect=DatabaseLookupError("falha de consulta")),
+    )
+
+    with pytest.raises(DatabaseLookupError, match="falha de consulta"):
+        modulo_validator.validate_xlsx_file(arquivo)

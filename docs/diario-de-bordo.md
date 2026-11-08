@@ -194,3 +194,21 @@ David — implementar o downloader e normalizar os dados para o modelo do banco.
 **Evidência coletada:** `docs/evidencias/tramitacao-esic_13-10.pdf` — encaminhamento interno à DIEST e aprovação de prorrogação de prazo pela SUPESP para resposta sobre licença dos dados; `docs/evidencias/licenca.pdf` — resposta final da SUPESP deferindo uso livre e redistribuição dos dados via API sob Decreto Estadual nº 36.746/2025 e LAI.
 
 **Próxima semana:** David — fazer testes unitários de `downloader.py`, `classifier.py` e `validator.py` e atualizar `ingestion.md`; Nikelly — implementar registro dos acessos da API e integrar API ao banco de dados.
+
+---
+### Semana de 07/11
+
+**Quem trabalhou e quanto:** David Lucas Pereira Braga dos Santos — 5h; Nikelly Santiago da Silva — 0h; Carlos Abimael Oliveira do Nascimento — ∼5 minutos
+
+**O que foi feito:**
+
+- Refatoração do pipeline de ingestão para deixar o processo mais robusto e rastreável: download com timeout, gravação em diretório temporário seguro com limpeza automática, cálculo de SHA-256 e verificação de duplicidade por hash e nome, classificação automática por nome do arquivo, pipeline orquestrado em etapas (download, validação, classificação, normalização, inserção), persistência de metadados e histórico de ingestões, persistência em lote com chunk size configurável, normalização mais rígida (AIS não identificadas, validação de idade, sinalização de divergência dia da semana/data), ajuste de Docker com certificado CA customizado, atualização de documentação e variáveis de ambiente e ampliação de testes para crawler, normalizer, classificador e validador (David).
+- Atualização do diagrama MER com a coluna `st_idade_invalida` (Abimael).
+
+**Obstáculo:** sem inconsistência nesta semana.
+
+**Contato com o público:** sem contato nesta semana.
+
+**Evidência coletada:** sem evidência nova nesta semana.
+
+**Próxima semana:** David — processar todos os dados históricos da SSPDS e automatizar ingestão periódica; Nikelly — implementar registro de acessos da API, integrar API ao banco e adicionar rotas de filtragem (por AIS, município, crime, data); Abimael — criar post de divulgação do Marco 2 no LinkedIn.

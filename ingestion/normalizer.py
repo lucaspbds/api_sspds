@@ -150,8 +150,8 @@ def normalizar_cvli(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:str) -> l
                 if not idade.is_integer() or not 0 <= idade <= 130:
                     logger.warning("Idade inválida: %s", idade)
                     st_idade_invalida = True
-                else:
-                    idade = int(idade)
+                idade = int(idade)
+
             municipio = normalizar_texto(linha["Município"])
 
             if municipio is None:
@@ -248,7 +248,7 @@ def normalizar_animais_CVP_Furto_Incendio_Salvamento(df: pd.DataFrame, arquivo_i
                 "tipo_entorpecente": None,
                 "peso_entorpecente_kg": None,
                 "st_dia_semana_divergente": st_dia_semana_divergente,
-                "st_idade_invalida": None
+                "st_idade_invalida": False
             }
 
             registros.append(registro)
@@ -319,7 +319,7 @@ def normalizar_armaDeFogo(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:str
                 "tipo_entorpecente": None,
                 "peso_entorpecente_kg": None,
                 "st_dia_semana_divergente": st_dia_semana_divergente,
-                "st_idade_invalida": None
+                "st_idade_invalida": False
             }
 
             registros.append(registro)
@@ -375,8 +375,7 @@ def normalizar_preconceitoRacaOuCor_crimesSexuais_indigenas_leiMariaDaPenha(df: 
                 if not idade.is_integer() or not 0 <= idade <= 130:
                     logger.warning("Idade inválida: %s", idade)
                     st_idade_invalida = True
-                else:
-                    idade = int(idade)
+                idade = int(idade)
 
             municipio = normalizar_texto(linha["Município"])
 
@@ -476,7 +475,7 @@ def normalizar_entorpecentes(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia:
                 "tipo_entorpecente": normalizar_texto(linha["Tipo de Entorpecente"]),
                 "peso_entorpecente_kg": normalizar_quantidadeEntorpecente(linha["Quantidade (Kg)"]),
                 "st_dia_semana_divergente": st_dia_semana_divergente,
-                "st_idade_invalida": None
+                "st_idade_invalida": False
             }
 
             registros.append(registro)
@@ -534,8 +533,7 @@ def normalizar_homofobiaETransfobia(df: pd.DataFrame, arquivo_id: int, tipo_ocor
                 if not idade.is_integer() or not 0 <= idade <= 130:
                     logger.warning("Idade inválida: %s", idade)
                     st_idade_invalida = True
-                else:
-                    idade = int(idade)
+                idade = int(idade)
 
             municipio = normalizar_texto(linha["Município"])
 

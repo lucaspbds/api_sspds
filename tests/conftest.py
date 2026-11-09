@@ -5,17 +5,16 @@ import pandas as pd
 from database.repository import criar_cliente_supabase
 
 @pytest.fixture
-def html_sspds():
-    """
-    Monta um HTML de teste compatível com o seletor CSS utilizado
-    pelo crawler, sem depender do site real da SSPDS.
-    """
+def html_sspds_atual():
+    """HTML sintético compatível com o seletor da seção de dados atuais."""
     divs = "".join(
         f"<div>{conteudo}</div>"
         for conteudo in (
-            [""] * 19 +
-            ["<a href='/arquivo1.xlsx'>CVLI</a>"
-             "<a href='/arquivo2.xlsx'>Furto</a>"] 
+            [""] * 19
+            + [
+                "<a href='/arquivo1.xlsx'>CVLI</a>"
+                "<a href='/arquivo2.xlsx'>Furto</a>"
+            ]
         )
     )
 
@@ -23,34 +22,61 @@ def html_sspds():
         <html>
             <body>
                 <div id="conteudo">
-                    <div>
-                        <div>
-                            <div>
-                                <section>
-                                    <section>
-                                        <div>{divs}</div>
-                                    </section>
-                                </section>
-                            </div>
-                        </div>
-                    </div>
+                    <div><div><div>
+                        <section><section>
+                            <div>{divs}</div>
+                        </section></section>
+                    </div></div></div>
                 </div>
             </body>
         </html>
     """
 
+
 @pytest.fixture
-def configurar_resposta_http(html_sspds):
+def html_sspds_historico():
+    """HTML sintético compatível com a seção Gutenberg de dados históricos."""
+    return """
+        <html>
+            <body>
+                <div class="wp-block-columns" style="text-transform:uppercase">
+                    <a class="wp-block-button__link" href="/historico1.xlsx">CVLI</a>
+                    <a class="wp-block-button__link" href="/historico2.xlsx">Furto</a>
+                    <a class="wp-block-button__link" href="/arquivo1.xlsx">Duplicado</a>
+                </div>
+                <div>
+                    <a class="wp-block-button__link" href="/fora-da-secao.xlsx">Menu</a>
+                </div>
+            </body>
+        </html>
     """
-    Fixture que já faz o patch do requests.get e configura a resposta
-    automaticamente usando o html_sspds.
-    """
-    with patch.object(modulo_crawler.r, "get") as mock_get:
-        resposta = Mock()
-        resposta.text = html_sspds
-        resposta.raise_for_status.return_value = None
-        mock_get.return_value = resposta
-        yield resposta  # Retorna a resposta configurada para o teste, se ele precisar
+
+
+@pytest.fixture
+def configurar_resposta_http(html_sspds_atual, html_sspds_historico):
+    """Simula as duas respostas HTTP: página atual e página histórica."""
+    urls = {
+        "url_sspds": "https://dados.test/atual/",
+        "url_sspds_historico": "https://dados.test/historico/",
+        "CRAWLER_TIMEOUT": "10",
+    }
+
+    with patch.object(
+        modulo_crawler,
+        "get_variavel_ambiente",
+        side_effect=lambda nome: urls[nome],
+    ):
+        with patch.object(modulo_crawler.r, "get") as mock_get:
+            respostas = []
+            for html in (html_sspds_atual, html_sspds_historico):
+                resposta = Mock()
+                resposta.text = html
+                resposta.raise_for_status.return_value = None
+                respostas.append(resposta)
+
+            mock_get.side_effect = respostas
+            yield mock_get
+
 
 @pytest.fixture
 def df_cvli():

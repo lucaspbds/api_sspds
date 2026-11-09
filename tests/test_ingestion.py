@@ -7,10 +7,16 @@ import pandas as pd
 from pathlib import Path
 
 import ingestion.crawler as modulo_crawler
-from ingestion.crawler import crawler, extrair_links
+from ingestion.crawler import (
+    crawler,
+    extrair_links,
+    normalizar_links,
+    extrair_links_atuais,
+    extrair_links_historicos,
+)
 from ingestion.exception import (EstruturaCSSDoSiteAlterado, VariavelAmbienteNaoEncontrada, 
                                  ValorInteiroInvalido, ColunasAusentesNaPlanilha, DatabaseLookupError, 
-                                 FileValidationError)
+                                 FileValidationError, tipoOcorrenciaNaoEncontrado)
 from ingestion.helpers import recebeInteiro
 from ingestion.normalizer import (
     normalizar_texto,
@@ -61,12 +67,71 @@ def test_extrair_links_retorna_todas_as_tags_a():
         "/furtos.xlsx",
     ]
 
-def test_crawler_retorna_links_e_tipos_corretamente(caplog, configurar_resposta_http):
+
+def test_normalizar_links_converte_urls_e_remove_duplicatas():
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(
+        """
+        <div>
+            <a href="/arquivo.xlsx">Arquivo</a>
+            <a href="https://dados.test/outro.xlsx">Outro</a>
+            <a href="/arquivo.xlsx">Duplicado</a>
+            <a href="   ">Sem URL</a>
+        </div>
+        """,
+        "html.parser",
+    )
+
+    resultado = normalizar_links(soup.find_all("a"), "https://dados.test/sspds/")
+
+    assert resultado == [
+        "https://dados.test/arquivo.xlsx",
+        "https://dados.test/outro.xlsx",
+    ]
+
+
+def test_extrair_links_atuais_retorna_urls_absolutas(html_sspds_atual):
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html_sspds_atual, "html.parser")
+
+    assert extrair_links_atuais(soup, "https://dados.test/atual/") == [
+        "https://dados.test/arquivo1.xlsx",
+        "https://dados.test/arquivo2.xlsx",
+    ]
+
+
+def test_extrair_links_historicos_retorna_apenas_botoes_da_secao(
+    html_sspds_historico,
+):
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html_sspds_historico, "html.parser")
+
+    resultado = extrair_links_historicos(
+        soup, "https://dados.test/historico/"
+    )
+
+    assert resultado == [
+        "https://dados.test/historico1.xlsx",
+        "https://dados.test/historico2.xlsx",
+        "https://dados.test/arquivo1.xlsx",
+    ]
+
+
+def test_crawler_retorna_links_atuais_e_historicos_sem_duplicatas(
+    caplog, configurar_resposta_http
+):
     resultado = crawler()
 
-    assert resultado == ["/arquivo1.xlsx", "/arquivo2.xlsx"]
-    
-    assert "Qtd de links encontrados: 2" in caplog.text
+    assert resultado == [
+        "https://dados.test/arquivo1.xlsx",
+        "https://dados.test/arquivo2.xlsx",
+        "https://dados.test/historico1.xlsx",
+        "https://dados.test/historico2.xlsx",
+    ]
+    assert "2 links atuais, 3 históricos e 4 únicos no total" in caplog.text
 
 #HELPERS
 @pytest.mark.parametrize("valor", [1])
@@ -426,93 +491,157 @@ def test_extrair_links_retorna_lista_vazia_sem_conteudo(conteudo):
     assert extrair_links(conteudo) == []
 
 
-def test_crawler_registra_e_propaga_variavel_ausente(caplog):
-    with patch.object(modulo_crawler, "get_variavel_ambiente", side_effect=VariavelAmbienteNaoEncontrada("url_sspds")):
+def test_crawler_registra_e_propaga_variavel_atual_ausente(caplog):
+    def obter_variavel(nome):
+        if nome == "url_sspds":
+            raise VariavelAmbienteNaoEncontrada(nome)
+        return {
+            "url_sspds_historico": "https://dados.test/historico/",
+            "CRAWLER_TIMEOUT": "10",
+        }[nome]
+
+    with patch.object(modulo_crawler, "get_variavel_ambiente", side_effect=obter_variavel):
         with caplog.at_level(logging.ERROR):
             with pytest.raises(VariavelAmbienteNaoEncontrada):
                 crawler()
 
     assert "Falha crítica de inicialização" in caplog.text
 
-def test_crawler_registra_e_propaga_timeout(caplog):
-    with patch.object(modulo_crawler.r, "get", side_effect=requests.exceptions.Timeout("tempo excedido")):
+
+def test_crawler_registra_e_propaga_url_historica_ausente(caplog):
+    def obter_variavel(nome):
+        if nome == "url_sspds_historico":
+            raise VariavelAmbienteNaoEncontrada(nome)
+        return {
+            "url_sspds": "https://dados.test/atual/",
+            "CRAWLER_TIMEOUT": "10",
+        }[nome]
+
+    with patch.object(modulo_crawler, "get_variavel_ambiente", side_effect=obter_variavel):
         with caplog.at_level(logging.ERROR):
-            with pytest.raises(requests.exceptions.Timeout):
+            with pytest.raises(VariavelAmbienteNaoEncontrada):
                 crawler()
 
-    assert "Tempo limite excedido" in caplog.text
+    assert "Falha crítica de inicialização" in caplog.text
 
 
-def test_crawler_registra_e_propaga_erro_de_conexao(caplog):
-    with patch.object(modulo_crawler.r, "get", side_effect=requests.exceptions.ConnectionError("sem conexão")):
+@pytest.mark.parametrize(
+    ("erro", "mensagem"),
+    [
+        (requests.exceptions.Timeout("tempo excedido"), "Tempo limite excedido"),
+        (requests.exceptions.ConnectionError("sem conexão"), "Erro de conexão"),
+        (requests.exceptions.RequestException("erro inesperado"), "Erro inesperado na requisição"),
+    ],
+)
+def test_obter_conteudo_html_registra_e_propaga_erros_de_requisicao(
+    erro, mensagem, caplog
+):
+    with patch.object(modulo_crawler.r, "get", side_effect=erro):
         with caplog.at_level(logging.ERROR):
-            with pytest.raises(requests.exceptions.ConnectionError):
-                crawler()
+            with pytest.raises(type(erro)):
+                modulo_crawler.obter_conteudo_html(
+                    "https://dados.test/atual/", timeout=10
+                )
 
-    assert "Erro de conexão" in caplog.text
+    assert mensagem in caplog.text
 
 
-def test_crawler_registra_e_propaga_erro_http(caplog):
+def test_obter_conteudo_html_registra_e_propaga_erro_http(caplog):
     resposta = Mock()
     resposta.status_code = 503
-
     erro_http = requests.exceptions.HTTPError(
-        "Service Unavailable",
-        response=resposta,
+        "Service Unavailable", response=resposta
     )
-
     resposta.raise_for_status.side_effect = erro_http
 
     with patch.object(modulo_crawler.r, "get", return_value=resposta):
         with caplog.at_level(logging.ERROR):
             with pytest.raises(requests.exceptions.HTTPError):
-                crawler()
+                modulo_crawler.obter_conteudo_html(
+                    "https://dados.test/atual/", timeout=10
+                )
 
     assert "Status 503" in caplog.text
 
 
-def test_crawler_registra_erro_inesperado_de_requisicao(caplog):
-    with patch.object(modulo_crawler.r, "get", side_effect=requests.exceptions.RequestException("erro inesperado")):
-        with caplog.at_level(logging.ERROR):
-            with pytest.raises(requests.exceptions.RequestException):
-                crawler()
+@pytest.mark.parametrize(
+    ("funcao", "html", "url_base", "mensagem"),
+    [
+        (
+            extrair_links_atuais,
+            "<html><body><p>Estrutura atual alterada</p></body></html>",
+            "https://dados.test/atual/",
+            "seção de indicadores detalhados atuais",
+        ),
+        (
+            extrair_links_historicos,
+            "<html><body><p>Estrutura histórica alterada</p></body></html>",
+            "https://dados.test/historico/",
+            "seção de indicadores históricos",
+        ),
+    ],
+)
+def test_extratores_rejeitam_estrutura_html_ausente(
+    funcao, html, url_base, mensagem
+):
+    from bs4 import BeautifulSoup
 
-    assert "Erro inesperado na requisição HTTP" in caplog.text
+    soup = BeautifulSoup(html, "html.parser")
+
+    with pytest.raises(EstruturaCSSDoSiteAlterado, match=mensagem):
+        funcao(soup, url_base)
 
 
-def test_crawler_registra_e_propaga_estrutura_alterada(caplog):
-    html_sem_container = """
-        <html>
-            <body>
-                <div id="conteudo">
-                    <p>A estrutura da página mudou.</p>
-                </div>
-            </body>
-        </html>
-    """
+@pytest.mark.parametrize(
+    ("funcao", "html", "url_base", "mensagem"),
+    [
+        (
+            extrair_links_atuais,
+            """<div id="conteudo"><div><div><div><section><section>
+                <div>{}</div>
+            </section></section></div></div></div></div>""".format(
+                "".join("<div></div>" for _ in range(19)) + "<div>Sem links</div>"
+            ),
+            "https://dados.test/atual/",
+            "não contém links",
+        ),
+        (
+            extrair_links_historicos,
+            """
+            <div class="wp-block-columns" style="text-transform:uppercase">
+                <a href="/sem-classe.xlsx">Link sem classe esperada</a>
+            </div>
+            """,
+            "https://dados.test/historico/",
+            "não contém links de download",
+        ),
+    ],
+)
+def test_extratores_rejeitam_secoes_sem_links_de_download(
+    funcao, html, url_base, mensagem
+):
+    from bs4 import BeautifulSoup
 
-    with patch.object(modulo_crawler.r, "get") as mock_get:
-        resposta = Mock()
-        resposta.text = html_sem_container
-        resposta.raise_for_status.return_value = None
-        mock_get.return_value = resposta
+    soup = BeautifulSoup(html, "html.parser")
 
-        with caplog.at_level(logging.ERROR):
-            with pytest.raises(EstruturaCSSDoSiteAlterado):
-                crawler()
-
-    assert "Erro de parsing/estrutura de dados no HTML" in caplog.text
+    with pytest.raises(EstruturaCSSDoSiteAlterado, match=mensagem):
+        funcao(soup, url_base)
 
 
 @pytest.mark.parametrize("timeout_invalido", ["abc", "", None])
 def test_crawler_usa_timeout_padrao_quando_configuracao_invalida(
-    caplog, timeout_invalido, configurar_resposta_http):
+    caplog, timeout_invalido, configurar_resposta_http
+):
     def obter_variavel(nome):
         if nome == "url_sspds":
-            return "https://exemplo.test/sspds"
+            return "https://dados.test/atual/"
+        if nome == "url_sspds_historico":
+            return "https://dados.test/historico/"
         if nome == "CRAWLER_TIMEOUT":
+            if timeout_invalido is None:
+                raise VariavelAmbienteNaoEncontrada(nome)
             return timeout_invalido
-        raise VariavelAmbienteNaoEncontrada()
+        raise VariavelAmbienteNaoEncontrada(nome)
 
     with patch.object(modulo_crawler, "get_variavel_ambiente", side_effect=obter_variavel):
         with caplog.at_level(logging.WARNING):
@@ -626,10 +755,10 @@ def test_normalizer_tipo_desconhecido_registra_erro_e_retorna_none(caplog, monke
     monkeypatch.setattr(modulo_normalizer, "configure_logging", lambda: None)
 
     with caplog.at_level(logging.ERROR):
-        resultado = normalizer(pd.DataFrame(), 1, "TIPO DESCONHECIDO")
-
-    assert resultado is None
-    assert "Falha na normalização" in caplog.text
+        with pytest.raises(tipoOcorrenciaNaoEncontrado):
+            resultado = normalizer(pd.DataFrame(), 1, "TIPO DESCONHECIDO")
+            assert resultado is None
+        assert "Falha na normalização: Tipo de ocorrência não encontrado!" in caplog.text
 
 
 def test_normalizer_registra_erro_de_colunas_ausentes_e_retorna_none(
@@ -638,15 +767,15 @@ def test_normalizer_registra_erro_de_colunas_ausentes_e_retorna_none(
     monkeypatch.setattr(modulo_normalizer, "configure_logging", lambda: None)
 
     with caplog.at_level(logging.ERROR):
-        resultado = normalizer(
-            pd.DataFrame(),
-            1,
-            "CRIMES VIOLENTOS LETAIS E INTENCIONAIS - CVLI",
-        )
+        with pytest.raises(ColunasAusentesNaPlanilha):
+            resultado = normalizer(
+                pd.DataFrame(),
+                1,
+                "CRIMES VIOLENTOS LETAIS E INTENCIONAIS - CVLI",
+            )
 
-    # A função normalizer captura a exceção e não a relança.
-    assert resultado is None
-    assert "Falha na normalização" in caplog.text
+            assert resultado is None
+    assert "Falha na normalização: Colunas ausentes na planilha:" in caplog.text
 
 #CLASSIFIER
 

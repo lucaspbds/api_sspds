@@ -7,6 +7,7 @@ from .cleanup import limpar_pasta_temporaria
 from .insert import (inserir_historico_ingestoes, atualizar_historico_ingestoes, 
                      inserir_informacoes_arquivo, atualizar_informacoes_arquivo, 
                      inserir_ocorrencias_crimes)
+from database.repository import criar_cliente_supabase
 from logging_system.logging_config import configure_logging 
 
 from datetime import datetime, timezone
@@ -37,10 +38,11 @@ def pipeline() -> None:
     # O crawler identifica os arquivos disponibilizados pela SSPDS
     # e retorna uma lista contendo os endereços desses arquivos e os tipos de crimes.
     lista_url = crawler()
+    cliente = criar_cliente_supabase()
     id_ingestao = inserir_historico_ingestoes(dados={
         "status": "EM_ANDAMENTO",
         "qtd_arquivos_encontrados": len(lista_url)
-    })
+    }, cliente=cliente)
 
     logger.info("Processamento dos dados iniciado")
     arquivos_processados = 0
@@ -62,7 +64,7 @@ def pipeline() -> None:
                         "data_coleta": data_coleta,
                         "atualizado_em": atualizado_em,
                         "ingestao_id": id_ingestao
-                    })
+                    }, cliente=cliente)
 
                 else:
                     arquivo_id = inserir_informacoes_arquivo(dados={
@@ -74,13 +76,13 @@ def pipeline() -> None:
                         "tamanho_bytes": file_classified["size_bytes"],
                         "data_coleta": data_coleta,
                         "ingestao_id": id_ingestao
-                    })
+                    }, cliente=cliente)
                 
                 df = pd.read_excel(file_classified["path"])
                 dados_normalizados = normalizer(df=df, arquivo_id=arquivo_id, 
                             tipo_ocorrencia=file_classified["tipo_ocorrencia"])
                 
-                inserir_ocorrencias_crimes(dados_normalizados)
+                inserir_ocorrencias_crimes(dados_normalizados, cliente=cliente)
                 anos = list(map(lambda dado: datetime.fromisoformat(dado["data_fato"]).year, dados_normalizados))
                 ano_min = min(anos)
                 ano_max = max(anos)
@@ -89,7 +91,7 @@ def pipeline() -> None:
                 else:
                     periodo = f"{ano_min} - {ano_max}"
                 atualizar_informacoes_arquivo(id=arquivo_id, dados=
-                                                {"periodo_dados": periodo})
+                                                {"periodo_dados": periodo}, cliente=cliente)
             arquivos_processados += 1
         except Exception:
             arquivos_falhas += 1
@@ -108,7 +110,7 @@ def pipeline() -> None:
         "status": status,
         "qtd_arquivos_processados": arquivos_processados,
         "qtd_arquivos_falhas": arquivos_falhas
-    })
+    }, cliente=cliente)
     limpar_pasta_temporaria()
 
 

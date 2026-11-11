@@ -200,8 +200,17 @@ uvicorn app.main:app --reload
 ---
 ### 🧪 Verificação da Aplicação
 
-* **Documentação interativa da API:** Acesse `http://localhost:8000/docs`.
-* **Status da Ingestão:** Retornará no terminal a quantidade de URLs coletadas e os dados salvos em `database/dados.json`.
+Com a API rodando, você pode acessar as interfaces de documentação interativa para testar os endpoints:
+
+1. **Documentação Interativa (Swagger UI) — *A principal***
+   * **Link:** `http://localhost:8000/docs`
+   * **Para que serve:** Interface visual completa onde você consegue visualizar todas as rotas (`/crimes/`, `/crimes/cvli`, `/crimes/vitimas`, `/crimes/preconceito`, `/crimes/operacionais`), testar os parâmetros de filtro em tempo real clicando em **"Try it out"** e verificar os payloads de resposta em JSON.
+
+2. **Documentação Alternativa (ReDoc)**
+   * **Link:** `http://localhost:8000/redoc`
+   * **Para que serve:** Uma opção alternativa de visualização estruturada da documentação, excelente para leitura detalhada dos contratos de resposta e schemas de dados.
+
+- **Status da Ingestão:** Retornará no terminal a quantidade de URLs coletadas e os dados salvos em `database/dados.json`.
 
 ---
 

@@ -1,9 +1,8 @@
-# app/schemas/crime_response.py
 from datetime import date, time, datetime
 from typing import Optional
 from pydantic import BaseModel, ConfigDict
 
-class CrimeResponse(BaseModel):
+class CrimeGeralResponse(BaseModel):
     """Schema unificado para resposta das rotas de consulta de crimes."""
     id: int
     arquivo_id: Optional[int] = None

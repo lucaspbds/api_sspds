@@ -1,26 +1,28 @@
-import os
-import json
-from pathlib import Path
+import logging
 from typing import List, Dict, Optional, Any
+from database.repository import consultar_registros
+from database.exceptions import ErroConexaoBanco, ErroOperacaoBanco
+
+logger = logging.getLogger("app.services.crime_service")
 
 class CrimeService:
     @staticmethod
     def listar_ocorrencias(limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """
-        Serviço responsável por buscar ocorrências criminais na pasta database.
-        Lê o arquivo JSON gerado pelo serviço de ingestão.
+        Serviço responsável por buscar ocorrências criminais diretamente 
+        da tabela 'ocorrencias_crimes' no banco de dados Supabase/PostgreSQL,
+        com tratamento defensivo de erros.
         """
-        database_dir = Path(os.getenv("DATABASE_PATH", "database"))
-        file_path = database_dir / "dados.json"
-        
-        # Se o arquivo ainda não existir, retorna uma lista vazia com segurança
-        if not file_path.exists():
-            return []
-        
-        # Lê o conteúdo do JSON gerado pela ingestão
-        with open(file_path, "r", encoding="utf-8") as f:
-            dados = json.load(f)    
-        # Se um limite foi especificado, fatia a lista; senão, retorna tudo
-        if limit is not None:
-            return dados[:limit]
-        return dados
+        try:
+            ocorrencias = consultar_registros(
+                tabela="ocorrencias_crimes", 
+                limite=limit
+            )
+            return ocorrencias
+            
+        except (ErroConexaoBanco, ErroOperacaoBanco) as e:
+            logger.error("Erro de infraestrutura ao buscar ocorrências no banco: %s", e)
+            raise
+        except Exception as e:
+            logger.error("Erro inesperado no serviço de crimes: %s", type(e).__name__)
+            raise RuntimeError("Não foi possível processar a listagem de ocorrências.") from e

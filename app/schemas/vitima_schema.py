@@ -3,34 +3,34 @@ from typing import Optional
 from pydantic import Field, ConfigDict, model_validator
 
 class CrimeComVitimaResponse(CrimeBaseSchema):
-    """Schema específico para crimes de Maria da Penha, Sexuais, Indígenas"""
-    vitima_genero: Optional[str] = Field(None, alias="Gênero")               
-    vitima_idade: Optional[int] = Field(None, alias="Idade da Vítima")       
-    vitima_escolaridade: Optional[str] = Field(None, alias="Escolaridade da Vítima")  
-    vitima_raca: Optional[str] = Field(None, alias="Raça da Vítima")        
+    """Schema específico para crimes de Maria da Penha, Sexuais, Indígenas."""
+    vitima_genero: Optional[str] = None
+    vitima_idade: Optional[int] = None
+    vitima_escolaridade: Optional[str] = None
+    vitima_raca: Optional[str] = None
 
-    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CvliResponse(CrimeComVitimaResponse):
-    """Schema para Crimes Violentos Letais Intencionais (CVLI)"""
-    natureza: Optional[str] = Field(None, alias="Natureza")
-    meio_empregado: Optional[str] = Field(None, alias="Meio Empregado")   
+    """Schema para Crimes Violentos Letais Intencionais (CVLI)."""
+    natureza: Optional[str] = None
+    meio_empregado: Optional[str] = None
 
-    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
+    model_config = ConfigDict(from_attributes=True)
 
-# Validador para tratar idades que vêm como texto ("Não Informada")
-# Razão: o Pydantic espera um inteiro na idade mas alguma colunas estão com str
-# Em específico essa de idade
     @model_validator(mode='before')
     @classmethod
     def limpar_dados_brutos(cls, values: dict) -> dict:
+        """
+        Trata idades que vêm como texto ("Não Informada") no banco.
+        O Pydantic espera int em `vitima_idade`; se vier texto, vira None.
+        """
         if isinstance(values, dict):
-            # Se a idade vier como texto inválido, transformamos em None de forma segura
-            idade = values.get("Idade da Vítima")
-            if idade in ["Não Informada", "Não informada", "nao informada", "NAO INFORMADA", "", None]:
-                values["Idade da Vítima"] = None
-                
-            # Se houver outros campos que venham com lixo de texto, pode limpá-los aqui também!
-            
+            idade = values.get("vitima_idade")
+            if isinstance(idade, str) and idade.strip().lower() in (
+                "não informada", "nao informada", "nao informado",
+                "não informado", "", "none", "null"
+            ):
+                values["vitima_idade"] = None
         return values

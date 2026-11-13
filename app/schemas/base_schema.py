@@ -9,5 +9,7 @@ class CrimeBaseSchema(BaseModel):
     data_fato: date
     hora_fato: Optional[time] = None
     dia_semana: Optional[str] = None
+    st_dia_semana_divergente: bool = False
+    st_idade_invalida: bool = False
 
     model_config = ConfigDict(from_attributes=True)

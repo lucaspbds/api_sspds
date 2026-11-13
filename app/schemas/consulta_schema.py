@@ -13,6 +13,8 @@ class CrimeGeralResponse(BaseModel):
     data_fato: Optional[date] = None
     hora_fato: Optional[time] = None
     dia_semana: Optional[str] = None
+    st_dia_semana_divergente: bool = False
+    st_idade_invalida: bool = False
     natureza: Optional[str] = None
     meio_empregado: Optional[str] = None
     vitima_genero: Optional[str] = None
@@ -24,5 +26,5 @@ class CrimeGeralResponse(BaseModel):
     tipo_entorpecente: Optional[str] = None
     peso_entorpecente_kg: Optional[float] = None
     criado_em: Optional[datetime] = None
-
+    
     model_config = ConfigDict(from_attributes=True)

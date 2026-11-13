@@ -143,7 +143,7 @@ api_sspds/
 | :-- | :-- | :-- |
 | `app/` | API FastAPI que disponibiliza os dados em JSON. | [`docs/api.md`](docs/api.md) |
 | `ingestion/` | Pipeline de ETL: coleta, valida, normaliza e carrega as planilhas da SSPDS/CE. | [`docs/ingestion.md`](docs/ingestion.md) |
-| `database/` | Modelagem do banco (Supabase/PostgreSQL) e camada de acesso a dados. | [`docs/database.md`](docs/database.md) |
+| `database/` | Modelagem do banco (Supabase/PostgreSQL) e camada de acesso a dados (`repository.py` com suporte a filtros de igualdade, intervalo de datas e limites). | [`docs/database.md`](docs/database.md) |
 
 ### Demais pastas e arquivos
 
@@ -164,6 +164,30 @@ api_sspds/
 | `LICENSE` | Licença MIT do código. |
 
 > `TODO`: `app/config.py` importa `from exception import ...` (sem o prefixo `app.`) e não é usado por `app/main.py`; revisar se o módulo ainda é necessário.
+
+### 4.1 Camada de acesso ao banco (`database/`)
+
+O pacote `database/` fornece funções utilitárias compartilhadas entre os serviços para interagir com o PostgreSQL/Supabase:
+
+- `validar_conexao(cliente)`: Valida a conectividade ativa com a base de dados.
+- `consultar_registros(tabela, filtros, limite, coluna_data, data_inicio, data_fim, colunas)`: Executa consultas `SELECT` com suporte a filtros de igualdade, **intervalo de datas** (`gte`/`lte`) e limite.
+- `inserir_registros(tabela, dados)`: Insere registros individuais ou em lote.
+- `atualizar_registro(tabela, id_registro, dados)`: Atualiza campos de uma linha específica.
+
+Exemplo de consulta por período e município:
+
+```python
+from database.repository import consultar_registros
+
+ocorrencias = consultar_registros(
+    tabela="ocorrencias_crimes",
+    filtros={"tipo_crime": "cvli", "municipio": "Fortaleza"},
+    coluna_data="data_fato",
+    data_inicio="2026-08-01",
+    data_fim="2026-08-31",
+    limite=50
+)
+```
 
 ---
 

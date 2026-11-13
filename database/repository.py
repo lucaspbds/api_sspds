@@ -76,6 +76,9 @@ def consultar_registros(
     tabela: str,
     filtros: Optional[Dict[str, Any]] = None,
     limite: Optional[int] = None,
+    coluna_data: Optional[str] = None,      # Ex: "data_fato"
+    data_inicio: Optional[Any] = None,      # Ex: "2026-01-01"
+    data_fim: Optional[Any] = None,
     colunas: str = "*",
     cliente: Optional[Client] = None,
 ) -> List[Dict[str, Any]]:
@@ -88,6 +91,12 @@ def consultar_registros(
             para filtrar os registros por igualdade.
         limite (Optional[int]): Quantidade máxima de registros a serem retornados
             (deve ser maior que zero).
+        coluna_data (Optional[str]): Nome da coluna temporal a ser utilizada no
+            filtro por intervalo (ex: 'data_fato', 'data_coleta').
+        data_inicio (Optional[Any]): Data ou carimbo temporal inicial do intervalo
+            inclusivo (WHERE coluna >= data_inicio).
+        data_fim (Optional[Any]): Data ou carimbo temporal final do intervalo
+            inclusivo (WHERE coluna <= data_fim).
         colunas (str): Colunas a serem selecionadas separadas por vírgula (padrão '*').
         cliente (Optional[Client]): Instância opcional do cliente Supabase.
 
@@ -114,6 +123,11 @@ def consultar_registros(
         if filtros:
             for coluna, valor in filtros.items():
                 query = query.eq(coluna, valor)
+        if coluna_data:
+            if data_inicio is not None:
+                query = query.gte(coluna_data, str(data_inicio))
+            if data_fim is not None:
+                query = query.lte(coluna_data, str(data_fim))
 
         if limite is not None:
             query = query.limit(limite)

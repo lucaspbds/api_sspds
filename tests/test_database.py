@@ -55,6 +55,39 @@ def test_deve_consultar_ocorrencia_com_idade_nao_informada(banco_local):
     assert any(r["vitima_idade"] is None for r in registros)
 
 
+@pytest.mark.database
+def test_deve_consultar_ocorrencias_com_filtro_de_intervalo_de_datas(banco_local):
+    """Valida a leitura com filtro por intervalo de datas (coluna_data, data_inicio, data_fim)."""
+    registros = consultar_registros(
+        tabela="ocorrencias_crimes",
+        coluna_data="data_fato",
+        data_inicio="2026-08-01",
+        data_fim="2026-08-15",
+        cliente=banco_local,
+    )
+    assert isinstance(registros, list)
+    assert len(registros) > 0
+    # Garante que todos os registros retornados estão dentro do intervalo especificado
+    assert all("2026-08-01" <= r["data_fato"] <= "2026-08-15" for r in registros)
+
+
+@pytest.mark.database
+def test_deve_consultar_ocorrencias_combinando_filtros_de_igualdade_e_data(banco_local):
+    """Valida a combinação de filtro de igualdade com intervalo de data e limite."""
+    registros = consultar_registros(
+        tabela="ocorrencias_crimes",
+        filtros={"municipio": "Fortaleza"},
+        coluna_data="data_fato",
+        data_inicio="2026-08-10",
+        data_fim="2026-08-20",
+        limite=1,
+        cliente=banco_local,
+    )
+    assert isinstance(registros, list)
+    assert len(registros) == 1
+    assert registros[0]["municipio"] == "Fortaleza"
+
+
 # ============================================================================
 # 3. TESTES DE INSERÇÃO
 # ============================================================================

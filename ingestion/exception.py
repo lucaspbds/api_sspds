@@ -8,8 +8,8 @@ class VariavelAmbienteNaoEncontrada(IngestionError):
         super().__init__(self.__mensagem)
 
 class EstruturaCSSDoSiteAlterado(IngestionError):
-    def __init__(self):
-        self.__mensagem = "O container de indicadores detalhados não foi encontrado no HTML (seletor CSS pode ter mudado)."
+    def __init__(self, msg="O container de indicadores detalhados não foi encontrado no HTML (seletor CSS pode ter mudado)."):
+        self.__mensagem = msg
         super().__init__(self.__mensagem)
 
 class ValorInteiroInvalido(IngestionError):

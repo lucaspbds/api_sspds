@@ -1,471 +1,500 @@
-# Documentação Técnica: Serviço de Ingestão de Dados
+# Serviço de Ingestão de Dados
 
-## 1. Visão geral
+Documentação técnica do pipeline de ETL do **api_sspds**, responsável por coletar, validar, normalizar e carregar no banco as planilhas de estatísticas da SSPDS/CE.
 
-O **Serviço de Ingestão de Dados** é um pipeline ETL desenvolvido em Python. Ele coleta os links das planilhas disponibilizadas no portal da Secretaria da Segurança Pública e Defesa Social (SSPDS), baixa os arquivos Excel, verifica se seus conteúdos já foram ingeridos, classifica os arquivos, normaliza os registros e persiste os dados no banco de dados hospedado.
+- Código: pasta [`ingestion/`](../ingestion/)
+- Visão geral do projeto: [`README.md`](../README.md)
+- Modelo de dados e camada de acesso ao banco: [`docs/database.md`](database.md)
 
-A persistência é realizada nas tabelas do banco de dados, por meio das funções de inserção e
-atualização.
-## 2. Estrutura de arquivos
+---
 
-A estrutura abaixo apresenta os módulos relevantes para o serviço. Ela não pretende representar todos os arquivos existentes no pacote.
+## 1. Visão geral do pipeline
 
-``` text
+O serviço de ingestão é o único componente que **escreve** os dados de ocorrências no banco (Supabase/PostgreSQL). Ele transforma planilhas `.xlsx` publicadas no portal da SSPDS/CE em registros estruturados na tabela `ocorrencias_crimes`, mantendo rastreabilidade do arquivo de origem e da execução que o trouxe.
+
+### Fluxo de ponta a ponta
+
+```mermaid
+flowchart TD
+    A["crawler<br/>coleta URLs (página atual + histórico)"] --> B["pipeline<br/>cria registro em historico_ingestoes<br/>(status EM_ANDAMENTO)"]
+    B --> C["downloader<br/>baixa .xlsx em TEMP_PATH"]
+    C --> D["validator<br/>SHA-256 + consulta por hash e por nome"]
+    D --> E{"is_new?<br/>(hash inédito)"}
+    E -- "Não" --> F["Ignora o arquivo<br/>(conta como processado)"]
+    E -- "Sim" --> G["classifier<br/>tipo_ocorrencia pelo nome do arquivo"]
+    G --> H{"name_exists?"}
+    H -- "Não" --> I["INSERT em informacoes_arquivo"]
+    H -- "Sim" --> J["UPDATE em informacoes_arquivo"]
+    I --> K["pandas.read_excel (1ª aba)"]
+    J --> K
+    K --> L["normalizer<br/>DataFrame + arquivo_id + tipo → list[dict]"]
+    L --> M["insert<br/>ocorrencias_crimes em lotes"]
+    M --> N["UPDATE periodo_dados do arquivo"]
+    F --> O["Próximo arquivo"]
+    N --> O
+    O --> P["pipeline<br/>fecha historico_ingestoes (SUCESSO ou FALHA)"]
+    P --> Q["cleanup<br/>remove TEMP_PATH"]
+```
+
+Resumo das etapas: **Extração** (crawler + downloader) → **Validação** (validator + classifier) → **Normalização** (normalizer) → **Carga** (insert).
+
+---
+
+## 2. Arquitetura e módulos do serviço
+
+```text
 ingestion/
-├── classifier.py       # Classificação do tipo de ocorrência pelo nome do arquivo
-├── cleanup.py          # Limpeza do diretório temporário
-├── config.py           # Leitura de variáveis de ambiente
-├── crawler.py          # Coleta dos links de planilhas no portal da SSPDS
-├── downloader.py       # Download dos arquivos Excel
-├── dockerfile          # Construção e configuração da imagem Docker
-├── exception.py        # Hierarquia de exceções customizadas
-├── helpers.py          # Funções auxiliares
-├── insert.py           # Inserção e atualização de registros no banco
-├── normalizer.py       # Normalização dos dados das planilhas
-├── pipeline.py         # Orquestração do processo de ingestão
-└── validator.py        # Validação, cálculo de hash e consulta de duplicidade
+├── classifier.py   # Classificação do tipo de ocorrência pelo nome do arquivo
+├── cleanup.py      # Remoção da pasta temporária
+├── config.py       # Leitura de variáveis de ambiente (get_variavel_ambiente)
+├── crawler.py      # Coleta dos links das planilhas no portal da SSPDS/CE
+├── downloader.py   # Download dos arquivos .xlsx
+├── exception.py    # Hierarquia de exceções do serviço
+├── helpers.py      # Funções auxiliares (recebeInteiro)
+├── insert.py       # Inserções/atualizações nas tabelas do pipeline
+├── normalizer.py   # Normalização das planilhas para o schema do banco
+├── pipeline.py     # Orquestrador (ponto de entrada)
+├── validator.py    # Hash SHA-256 e verificação de duplicidade
+└── dockerfile      # Imagem Docker do serviço
 ```
 
-## 3. Módulos e componentes
+Dependências externas ao pacote: `database/repository.py` (acesso ao Supabase) e `logging_system/logging_config.py` (logs). Ambos são copiados para a imagem Docker da ingestão.
+
+### Resumo de entradas e saídas
+
+| Módulo | Entrada | Saída |
+| :-- | :-- | :-- |
+| `crawler` | variáveis `url_sspds`, `url_sspds_historico`, `CRAWLER_TIMEOUT` | `list[str]` de URLs absolutas, sem duplicatas |
+| `downloader` | URL de um `.xlsx` | `Path` relativo do arquivo salvo em `TEMP_PATH` |
+| `validator` | caminho do `.xlsx` | `ValidatedFile` (`dict`) com hash, tamanho e flags de duplicidade |
+| `classifier` | `ValidatedFile` | cópia do dict com `tipo_ocorrencia` |
+| `insert` (arquivo) | `dict` de metadados | `arquivo_id` (`int`) |
+| `normalizer` | `DataFrame`, `arquivo_id`, `tipo_ocorrencia` | `list[dict]` pronta para `ocorrencias_crimes` |
+| `insert` (ocorrências) | `list[dict]` | — (insere em lotes) |
+| `cleanup` | `TEMP_PATH` | — (remove a pasta) |
+
+### 2.1 `config.py` e `helpers.py`
+
+- `get_variavel_ambiente(nome) -> str`: carrega o `.env` (python-dotenv) e devolve o valor da variável. Lança `VariavelAmbienteNaoEncontrada` se ela não existir ou estiver vazia.
+- `recebeInteiro(valor) -> int`: converte para inteiro; lança `ValorInteiroInvalido` em caso de `ValueError`/`TypeError`.
+
+> [!NOTE]
+> `CHUNK_SIZE` e `HASH_CHUNK_SIZE` são convertidos com `recebeInteiro(eval(...))` em `downloader.py` e `validator.py`, o que permite expressões como `1024 * 64` no `.env`. Como `eval` executa código arbitrário, **o `.env` deve ser tratado como arquivo confiável**. `TODO`: substituir por um parser seguro de expressões.
+
+### 2.2 `crawler.py` — coleta dos links
+
+Acessa duas páginas da SSPDS/CE e extrai os links das planilhas.
+
+| Função                                               | Descrição                                                                                                                            |
+| :--------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------- |
+| `obter_conteudo_html(url, timeout) -> BeautifulSoup` | `requests.get` + `raise_for_status()`. Registra em log e **propaga** `Timeout`, `ConnectionError`, `HTTPError` e `RequestException`. |
+| `extrair_links(conteudo_html) -> list`               | Devolve as tags `<a href>` de um elemento; lista vazia se o conteúdo for nulo/falso.                                                 |
+| `normalizar_links(tags, url_base) -> list[str]`      | Converte `href` em URL absoluta (`urljoin`), ignora vazios e remove duplicatas preservando a ordem.                                  |
+| `extrair_links_atuais(soup, url_base)`               | Usa o seletor CSS `#conteudo > div > div > div > section > section > div > div:nth-child(20)`.                                       |
+| `extrair_links_historicos(soup, url_base)`           | Usa `div.wp-block-columns[style*="text-transform:uppercase"]` e, dentro dele, os links `a.wp-block-button__link[href]`.              |
+| `crawler() -> list[str]`                             | Orquestra tudo: página atual → página histórica → `list(dict.fromkeys(atuais + históricos))`.                                        |
+
+Comportamentos relevantes:
+
+- `CRAWLER_TIMEOUT` ausente ou inválido não interrompe: usa 10 s e registra aviso.
+- Se um seletor não encontrar o container, ou o container não tiver links, lança `EstruturaCSSDoSiteAlterado` — é o sinal de que o **layout do site mudou**.
+- A ordem do resultado é: primeiro os arquivos atuais, depois os históricos.
+
+### 2.3 `downloader.py` — download
 
-### 3.1 `config.py`
+`download_xlsx(url, destination_dir=TEMP_PATH, filename=None, timeout=DOWNLOADER_TIMEOUT) -> Path`
+
+- **Validações:** URL `http`/`https` com host; nome do arquivo extraído do caminho da URL (o parâmetro `filename` só é usado se a URL não tiver nome); nome sem diretórios; extensão `.xlsx`; `timeout > 0`. Falhas geram `DownloadError`.
+- **Gravação atômica:** baixa em blocos de `CHUNK_SIZE` para um arquivo temporário `.<nome>.xxxx.part` no mesmo diretório, faz `flush` + `fsync` e só então o renomeia (`replace`) para o nome final. O `.part` é removido no `finally`, evitando deixar planilhas incompletas.
+- **Caminho de retorno:** relativo ao diretório de execução (`Path.cwd()`). `TEMP_PATH` deve, portanto, apontar para dentro do diretório de trabalho.
+- **Exceções:** `DownloadTimeoutError`, `DownloadHTTPError`, `DownloadConnectionError`, `DownloadError` (outras falhas de requisição) e `FileWriteError` (disco).
+
+### 2.4 `validator.py` — validação e duplicidade
+
+| Função | Descrição |
+| :-- | :-- |
+| `calculate_sha256(file_path) -> str` | Hash SHA-256 lido em blocos de `HASH_CHUNK_SIZE`. Falha de leitura → `FileValidationError`. |
+| `check_hash_in_database(file_hash) -> bool` | Consulta `informacoes_arquivo.hash_sha256`. Hash vazio ou falha de consulta → `DatabaseLookupError`. |
+| `check_filename_in_database(file_name) -> list` | Consulta `informacoes_arquivo.nome_arquivo`. Retorna `[id, True]` ou `[None, False]`. |
+| `validate_xlsx_file(file_path) -> ValidatedFile` | Verifica existência, se é arquivo regular e se a extensão é `.xlsx`; calcula o hash e consulta o banco por hash e por nome. |
 
-Carrega as variáveis de ambiente contidas no arquivo `.env` usando `python-dotenv`.
+`ValidatedFile`:
+
+| Campo | Tipo | Significado |
+| :-- | :-- | :-- |
+| `path` | `str` | Caminho relativo (POSIX) do arquivo. |
+| `name` | `str` | Nome do arquivo. |
+| `sha256` | `str` | Hash do conteúdo. |
+| `is_new` | `bool` | `True` quando o **hash** ainda não existe no banco. |
+| `size_bytes` | `int` | Tamanho em bytes. |
+| `name_exists` | `bool` | `True` quando já existe registro com esse **nome**. |
+| `id_registro` | `int \| None` | `id` do registro encontrado **pelo nome** (não pelo hash). |
 
-**`get_variavel_ambiente(nome_variavel: str)`**
+> [!IMPORTANT]
+> `is_new` (conteúdo) e `name_exists` (nome) são verificações independentes. Um arquivo pode ter `is_new=True` e `name_exists=True`: é o caso de uma planilha **republicada com o mesmo nome e conteúdo atualizado**.
 
--   **Descrição:** obtém o valor de uma variável de ambiente.
--   **Parâmetros:** `nome_variavel`, nome da variável.
--   **Retorno:** valor atribuído à variável.
--   **Exceção:** lança `VariavelAmbienteNaoEncontrada` quando a variável
-    não existe ou está vazia.
+### 2.5 `classifier.py` — tipo de ocorrência
 
-### 3.2 `crawler.py`
+`classificar_arquivo(metadado) -> MetadadoArquivo` exige a chave `path`, chama `classificar_tipo_ocorrencia(nome)` e devolve **uma cópia** do dicionário com `tipo_ocorrencia` (o original não é alterado).
 
-Responsável por acessar a página da SSPDS e coletar os endereços dos arquivos publicados na seção de indicadores detalhados.
+`classificar_tipo_ocorrencia(nome_arquivo)`:
 
-**`extrair_links(conteudo_html)`**
+1. Usa só o nome-base do arquivo e o normaliza (`normalizar_nome`: remove acentos, `casefold`, troca não alfanuméricos por espaço).
+2. Compara com as palavras-chave de `REGRAS_TIPO_OCORRENCIA` (também normalizadas).
+3. Deduplica as categorias encontradas.
+4. Exige **exatamente uma** categoria: nenhuma ou mais de uma → `TipoOcorrenciaNaoIdentificado`. Nome vazio → `ValueError`.
+
+| Categoria canônica (valor gravado em `tipo_crime`) | Palavras-chave (no nome do arquivo) |
+| :-- | :-- |
+| `CRIMES VIOLENTOS LETAIS E INTENCIONAIS - CVLI` | `cvli`, `crimes violentos letais e intencionais` |
+| `APREENSÃO DE ARMAS DE FOGO` | `apreensao de armas de fogo`, `armas de fogo`, `arma de fogo`, `apreensao de armas` |
+| `APREENSÃO DE ENTORPECENTES` | `apreensao de entorpecentes`, `entorpecentes`, `apreensao de drogas` |
+| `HOMOFOBIA E TRANSFOBIA` | `homofobia e transfobia`, `homofobia`, `transfobia` |
+| `CRIME OU PRECONCEITO DE RAÇA OU DE COR` | `crime ou preconceito de raca ou de cor`, `preconceito de raca`, `preconceito de cor` |
+| `CRIMES SEXUAIS` | `crimes sexuais`, `crime sexual` |
+| `INDÍGENAS VÍTIMAS DE CRIMES` | `indigenas vitimas de crimes`, `indigenas` |
+| `LEI 11.340/06 (LEI MARIA DA PENHA)` | `lei maria da penha`, `lei 11 340 06`, `maria da penha` |
+| `CRIME DE MAUS-TRATOS A ANIMAIS` | `maus tratos a animais`, `maus tratos animais`, `animais` |
+| `CRIMES VIOLENTOS CONTRA O PATRIMÔNIO - CVP` | `crimes violentos contra o patrimonio`, `cvp` |
+| `FURTO` | `furto`, `furtos` |
+| `INCÊNDIO` | `incendio`, `incendios` |
+| `BUSCA E SALVAMENTO` | `busca e salvamento`, `salvamento` |
 
-- Recebe um elemento HTML processado pelo BeautifulSoup.
-- Retorna uma lista com todas as tags `<a>` encontradas.
-- Se o conteúdo recebido for nulo ou falso, retorna uma lista vazia.
+> [!NOTE]
+> Os valores canônicos precisam coincidir **exatamente** com os que `normalizer.py` espera. Ao adicionar uma categoria, atualize os dois módulos.
 
-**`crawler() -> list`**
+### 2.6 `normalizer.py` — normalização
 
-- Obtém a URL da página por meio da variável de ambiente `url_sspds`.
-- Obtém `CRAWLER_TIMEOUT` e tenta convertê-la para inteiro com `recebeInteiro()`.
-- Se `CRAWLER_TIMEOUT` estiver ausente ou inválido, registra um aviso e utiliza o padrão de 10 segundos.
-- Realiza a requisição HTTP com `requests.get()` e aplica `raise_for_status()` para identificar respostas HTTP de erro.
-- Analisa o HTML com `BeautifulSoup`.
-- Procura o container dos indicadores detalhados pelo seletor CSS
-  `#conteudo > div > div > div > section > section > div > div:nth-child(20)`.
-- Se o container não for encontrado, lança `EstruturaCSSDoSiteAlterado`.
-- Extrai as tags de link do container e retorna somente os valores `href` não vazios.
+`normalizer(df, arquivo_id, tipo_ocorrencia) -> list[dict]` roteia o DataFrame para o normalizador da categoria. Cada normalizador exige `arquivo_id > 0` (senão `ValueError`) e todas as colunas obrigatórias (senão `ColunasAusentesNaPlanilha`).
 
-**Retorno:** lista de URLs (`list[str]`). 
+| Normalizador | Categorias atendidas | Colunas obrigatórias da planilha |
+| :-- | :-- | :-- |
+| `normalizar_cvli` | CVLI | Município, AIS, Natureza, Data, Hora, Dia da Semana, Meio Empregado, Gênero, Idade da Vítima, Escolaridade da Vítima, Raça da Vítima |
+| `normalizar_animais_CVP_Furto_Incendio_Salvamento` | Maus-tratos a animais, CVP, Furto, Incêndio, Busca e Salvamento | Município, AIS, Data, Hora, Dia da Semana |
+| `normalizar_armaDeFogo` | Apreensão de armas de fogo | Município, AIS, Data, Hora, Dia da Semana, Quantidade |
+| `normalizar_preconceitoRacaOuCor_crimesSexuais_indigenas_leiMariaDaPenha` | Raça ou cor, Crimes sexuais, Indígenas, Lei Maria da Penha | Município, AIS, Data, Hora, Dia da Semana, Gênero, Idade da Vítima, Escolaridade da Vítima, Raça da Vítima |
+| `normalizar_entorpecentes` | Apreensão de entorpecentes | Município, AIS, Data, Hora, Dia da Semana, Quantidade (Kg), Tipo de Entorpecente |
+| `normalizar_homofobiaETransfobia` | Homofobia e Transfobia | Município, AIS, Data, Hora, Dia da Semana, Idade da Vítima, Escolaridade da Vítima, Raça da Vítima, Natureza, Identidade de Gênero, Orientação Sexual, Local |
+
+Categoria não mapeada → `tipoOcorrenciaNaoEncontrado`. Erros de conversão (`ValueError`, `TypeError`, `OverflowError`), colunas ausentes e categoria não mapeada são **registrados em log e relançados** (`raise`): o `normalizer()` **não** devolve `None`; quem chama (o pipeline) recebe a exceção.
 
-**Erros e logs:** registra erros de timeout, conexão, HTTP e demais falhas de requisição, propagando as exceções. Também registra e propaga falhas de configuração, alteração da estrutura HTML e erros não mapeados. 
+#### Funções de conversão
 
-### 3.3 `helpers.py`
+| Função | Regra |
+| :-- | :-- |
+| `normalizar_texto` | `NaN` → `None`; `str().strip().title()` e colapso de espaços; resultado vazio → `None`. |
+| `normalizar_data` | `pandas.to_datetime(..., errors="raise").date()`; data inválida propaga erro. |
+| `normalizar_hora` | `NaN` ou `"não informada"` → `None`; `datetime.time` é preservado; demais valores são convertidos com `pandas.to_datetime`. |
+| `normalizar_idade` | `NaN`, `"não informada"` ou `"não informado"` → `None`; troca vírgula por ponto; devolve `float`. |
+| `normalizar_quantidadeArmas` | `NaN`/`"não informada"` → `None`; valor fracionário → aviso em log e `None`; senão `int`. |
+| `normalizar_quantidadeEntorpecente` | `NaN`/`"não informada"` → `None`; aceita vírgula decimal; falha de conversão → aviso e `None`; devolve `float`. |
+| `normalizar_ais` | Aplica `normalizar_texto`; se contiver `"Ais Não Identificada"` → `None`. |
 
-Módulo utilitário com funções de apoio.
+#### Registro produzido
 
-**`recebeInteiro(valor: str) -> int`**
+Todos os normalizadores geram dicionários com as mesmas 20 chaves (as não aplicáveis ficam `None`), compatíveis com as colunas de `ocorrencias_crimes`:
 
--   **Descrição:** converte um valor em número inteiro.
--   **Parâmetros:** `valor`, valor textual a converter.
--   **Retorno:** número inteiro correspondente.
--   **Exceção:** lança `ValorInteiroInvalido` quando a conversão não pode ser realizada.
+`arquivo_id`, `tipo_crime`, `municipio`, `ais`, `data_fato`, `hora_fato`, `local_fato`, `dia_semana`, `natureza`, `meio_empregado`, `vitima_genero`, `vitima_idade`, `vitima_escolaridade`, `vitima_raca`, `vitima_orientacao_sexual`, `quantidade_armas`, `tipo_entorpecente`, `peso_entorpecente_kg`, `st_dia_semana_divergente`, `st_idade_invalida`.
 
-### 3.4 `downloader.py`
+- `data_fato` e `hora_fato` são gravadas como strings ISO (`YYYY-MM-DD`, `HH:MM:SS`).
+- `municipio` é obrigatório: valor ausente gera `ValueError("Município ausente")`.
 
-Responsável por baixar as planilhas Excel disponibilizadas pelas URLs coletadas pelo crawler.
+Campos preenchidos por grupo (os demais ficam `None`):
 
-**`download_xlsx(url: str, destination_dir: str | Path = DEFAULT_PATH, filename: str | None = None, timeout: int = TIMEOUT_SECONDS) -> Path`**
+| Grupo | Campos específicos preenchidos |
+| :-- | :-- |
+| CVLI | `natureza`, `meio_empregado`, `vitima_genero`, `vitima_idade`, `vitima_escolaridade`, `vitima_raca` |
+| Animais / CVP / Furto / Incêndio / Salvamento | apenas os campos comuns |
+| Armas de fogo | `quantidade_armas` |
+| Raça ou cor / Sexuais / Indígenas / Maria da Penha | `vitima_genero`, `vitima_idade`, `vitima_escolaridade`, `vitima_raca` |
+| Entorpecentes | `tipo_entorpecente`, `peso_entorpecente_kg` |
+| Homofobia e Transfobia | `local_fato`, `natureza`, `vitima_genero` (←`Identidade de Gênero`), `vitima_idade`, `vitima_escolaridade`, `vitima_raca`, `vitima_orientacao_sexual` |
 
--   **Descrição:** baixa um arquivo `.xlsx` por HTTP ou HTTPS e o grava no diretório de destino.
--   **Parâmetros:**
-    -   `url`: endereço HTTP(S) do arquivo.
-    -   `destination_dir`: diretório em que o arquivo será salvo. Por padrão, utiliza a variável de ambiente `TEMP_PATH`.
-    -   `filename`: nome alternativo utilizado somente quando a URL não fornece um nome de arquivo no caminho.
-    -   `timeout`: tempo limite da requisição, em segundos. Por padrão, utiliza a variável de ambiente `DOWNLOADER_TIMEOUT`.
--   **Retorno:** caminho do arquivo baixado, representado como `Path`.
--   **Validações:** exige URL HTTP(S) com host válido, nome de arquivo sem diretórios e extensão `.xlsx`; o timeout deve ser positivo.
--   **Gravação:** cria o diretório de destino, baixa o conteúdo em
-    blocos e grava primeiro em um arquivo temporário `.part`. Após a
-    escrita, realiza `flush` e `fsync` e substitui o destino pelo
-    arquivo concluído. Isso evita deixar um arquivo final parcialmente
-    baixado.
--   **Tratamento de erros:** traduz falhas de timeout, HTTP, conexão,
-    requisição e escrita em exceções específicas do serviço. O arquivo
-    parcial é removido ao final da operação.
+Campos comuns: `arquivo_id`, `tipo_crime`, `municipio`, `ais`, `data_fato`, `hora_fato`, `dia_semana` e as duas flags de qualidade.
 
-**Configurações utilizadas**
-*variáveis de ambiente*
--   `DOWNLOADER_TIMEOUT`: timeout padrão, convertido para inteiro.
--   `CHUNK_SIZE`: tamanho dos blocos usados durante o download.
--   `TEMP_PATH`: diretório temporário padrão.
+### 2.7 `insert.py` — carga
 
-### 3.5 `validator.py`
+Camada fina sobre `database.repository`. Cada função cria um cliente Supabase se nenhum for informado.
 
-Responsável por verificar a integridade básica do arquivo baixado, calcular seu hash e consultar o banco para identificar conteúdo ou nome previamente registrado.
+| Função | Efeito |
+| :-- | :-- |
+| `inserir_historico_ingestoes(dados, cliente)` | Insere em `historico_ingestoes`; retorna o `id`. |
+| `atualizar_historico_ingestoes(id, dados, cliente)` | Atualiza `historico_ingestoes` pelo `id`. |
+| `inserir_informacoes_arquivo(dados, cliente)` | Insere em `informacoes_arquivo`; retorna o `id` (usado como `arquivo_id`). |
+| `atualizar_informacoes_arquivo(id, dados, cliente)` | Atualiza `informacoes_arquivo`; retorna o `id`. |
+| `inserir_ocorrencias_crimes(dados, tamanho_lote, cliente)` | Divide em lotes de `INSERT_CHUNK_SIZE` e insere em `ocorrencias_crimes`. |
 
-**`calculate_sha256(file_path)`**
+### 2.8 `cleanup.py`
 
--   Calcula o SHA-256 do arquivo lendo-o em blocos de tamanho configurado por `HASH_CHUNK_SIZE`.
--   Falhas de leitura ou configuração inválida são reportadas como `FileValidationError`.
+`limpar_pasta_temporaria(caminho=TEMP_PATH)`: remove a pasta e o conteúdo com `shutil.rmtree`. Pasta inexistente → apenas log; caminho que não é pasta → `NotADirectoryError`; falha de remoção → log e `OSError`.
 
-**`check_hash_in_database(file_hash: str) -> bool`**
+### 2.9 `pipeline.py` — orquestrador
 
--   Consulta a tabela `informacoes_arquivo` pelo campo `hash_sha256`.
--   Retorna `True` quando já existe um registro com o hash informado e `False` caso contrário.
--   Hash vazio ou falhas na consulta são tratados como `DatabaseLookupError`.
+`pipeline() -> None` (sem parâmetros). Passo a passo:
 
-**`check_filename_in_database(file_name: str) -> list`**
+1. `crawler()` obtém a lista de URLs e cria o cliente Supabase.
+2. Insere em `historico_ingestoes` o registro `{status: "EM_ANDAMENTO", qtd_arquivos_encontrados}`.
+3. Para cada URL, dentro de um `try/except Exception`:
+   1. `download_xlsx(url)` e registro de `data_coleta` (UTC).
+   2. `validate_xlsx_file(...)`.
+   3. Se `is_new` for `False`, nada mais é feito para o arquivo.
+   4. Se `is_new` for `True`: `classificar_arquivo(...)` e então
+      - `name_exists=True` → `atualizar_informacoes_arquivo` (atualiza `url_download`, `hash_sha256`, `periodo_dados=None`, `tamanho_bytes`, `data_coleta`, `atualizado_em`, `ingestao_id`; **não** altera `nome_arquivo` nem `tipo_crime`);
+      - `name_exists=False` → `inserir_informacoes_arquivo` (`nome_arquivo`, `url_download`, `hash_sha256`, `tipo_crime`, `periodo_dados=None`, `tamanho_bytes`, `data_coleta`, `ingestao_id`).
+   5. `pandas.read_excel(path)` — lê a **primeira aba** da planilha.
+   6. `normalizer(df, arquivo_id, tipo_ocorrencia)` → `inserir_ocorrencias_crimes(...)`.
+   7. Calcula o menor e o maior ano de `data_fato` e atualiza `periodo_dados` (`"2024"` ou `"2019 - 2024"`).
+   8. Incrementa `arquivos_processados`.
+4. Qualquer exceção no passo 3 é registrada com `logger.exception`, incrementa `arquivos_falhas` e o laço segue para o próximo arquivo.
+5. Atualiza `historico_ingestoes` com `data_fim`, `status` (`SUCESSO` se não houve falhas; `FALHA` se houve ao menos uma) e os contadores.
+6. Chama `limpar_pasta_temporaria()`.
 
--   Consulta a tabela `informacoes_arquivo` pelo campo `nome_arquivo`.
--   Quando encontra o nome, retorna `[id, True]`, em que `id` é o identificador do registro encontrado.
--   Quando não encontra, retorna `[None, False]`.
--   Nome vazio ou falhas na consulta são tratados como
-    `DatabaseLookupError`.
+---
 
-**`validate_xlsx_file(file_path) -> ValidatedFile`**
+## 3. Fonte dos dados e regras de negócio
 
-Verifica se o caminho existe, se aponta para um arquivo regular e se
-possui extensão `.xlsx`. Em seguida, calcula o hash e consulta o banco
-tanto pelo hash quanto pelo nome.
+### 3.1 Como os arquivos são obtidos
 
-O resultado contém:
+| Item | Detalhe |
+| :-- | :-- |
+| Fonte | Portal de estatísticas da SSPDS/CE (`url_sspds`) e página de dados detalhados/históricos (`url_sspds_historico`). |
+| Método | Raspagem HTML (`requests` + `BeautifulSoup`, parser `html.parser`) para descobrir os links; download direto de cada link. |
+| Formato aceito | Somente `.xlsx` (o downloader e o validador rejeitam outras extensões). |
+| Leitura | `pandas.read_excel` (engine OpenPyXL), primeira aba. |
+| Periodicidade | A SSPDS publica mensalmente; a ingestão deve ser executada sob demanda ou agendada externamente (o projeto não inclui agendador). |
 
-  `path`: Caminho relativo do arquivo.
-  `name`: Nome do arquivo.
-  `sha256`: Hash SHA-256 do conteúdo.
-  `is_new`: `True` quando o conteúdo (hash) ainda não está registrado; `False` quando o hash já existe.
-  `size_bytes`: Tamanho do arquivo em bytes.
-  `name_exists`: Indica se já existe registro com aquele nome de arquivo.
-  `id_registro`: ID do registro encontrado pela consulta do nome; `None` se o nome                        não existir.
+Cada planilha traz uma categoria de ocorrência; os cabeçalhos esperados estão na [tabela do normalizador](#26-normalizerpy--normalização).
 
-**Atenção: `is_new` e `name_exists` não representam a mesma verificação.**
+### 3.2 Validações que rejeitam dados fora do padrão
 
--   `is_new` verifica a novidade do **conteúdo**, por meio do hash.
--   `name_exists` verifica a existência do **nome do arquivo**.
--   Portanto, é possível que `is_new=True` e `name_exists=True`: o nome já está cadastrado, mas o conteúdo do arquivo é diferente.
--   `id_registro` é obtido pela consulta do nome, não pela consulta do hash.
+| Etapa | Condição rejeitada | Exceção |
+| :-- | :-- | :-- |
+| Download | URL não `http(s)`, sem host, sem nome de arquivo ou que não termine em `.xlsx` | `DownloadError` |
+| Download | Timeout, erro HTTP, falha de conexão, falha ao gravar | `DownloadTimeoutError`, `DownloadHTTPError`, `DownloadConnectionError`, `FileWriteError` |
+| Validação | Arquivo inexistente, que não é arquivo regular ou sem extensão `.xlsx` | `FileValidationError` |
+| Classificação | Nome sem categoria reconhecida, ou com mais de uma | `TipoOcorrenciaNaoIdentificado` |
+| Normalização | Colunas obrigatórias ausentes | `ColunasAusentesNaPlanilha` |
+| Normalização | `arquivo_id <= 0`, município ausente, data inválida, hora inválida | `ValueError` (ou erro de conversão do pandas) |
+| Normalização | Categoria não mapeada | `tipoOcorrenciaNaoEncontrado` |
 
-### 3.6 `classifier.py`
+Em todos os casos o arquivo é contado como falha, mas a execução continua com os demais arquivos.
 
-Responsável por identificar a categoria do arquivo com base em seu nome.
+### 3.3 Sinalização de inconsistências da fonte (sem correção silenciosa)
 
-**`normalizar_nome(texto)`**
+| Flag | Regra |
+| :-- | :-- |
+| `st_dia_semana_divergente` | Compara `Dia da Semana` com o dia calculado a partir de `Data` (ignora maiúsculas/minúsculas e o sufixo `-feira`). `True` se divergir, com aviso em log. O valor informado pela fonte é **preservado** em `dia_semana`. Se a fonte não informar o dia, a flag fica `False`. |
+| `st_idade_invalida` | Disponível nos grupos com idade da vítima. `True` quando a idade não é inteira ou está fora de 0–130. Idade ausente/"não informada" vira `None` com flag `False`. |
 
-Normaliza o texto para comparação: remove acentos, aplica normalização Unicode, converte para minúsculas de forma compatível com Unicode, substitui caracteres não alfanuméricos por espaços e elimina espaços excedentes.
+Atenção ao armazenamento da idade: quando a idade não é `None`, ela é convertida com `int(...)` **mesmo se inválida** — uma idade fracionária é truncada e uma fora do intervalo é mantida; a flag `st_idade_invalida` é o que indica o problema.
 
-**`classificar_tipo_ocorrencia(nome_arquivo: str | Path) -> str`**
+Outras regras de limpeza:
 
--   Utiliza somente o nome-base do caminho para classificar o arquivo.
--   Compara o nome normalizado com as palavras-chave definidas em `REGRAS_TIPO_OCORRENCIA`.
--   Remove correspondências duplicadas, preservando a ordem das regras.
--   Retorna o nome canônico da categoria quando há exatamente uma categoria correspondente.
--   Lança `ValueError` para nome vazio.
--   Retorna `TipoOcorrenciaNaoIdentificado` quando nenhuma categoria é identificada ou quando há correspondência com mais de uma categoria.
+- Textos recebem `strip`, colapso de espaços e *Title Case* (`"HOMICÍDIO"` → `"Homicídio"`).
+- `"AIS Não Identificada (...)"` vira `ais = None` (o município já é gravado em coluna própria).
+- Quantidades de armas fracionárias e quantidades de entorpecentes não numéricas viram `None`, com aviso.
+- Vírgula decimal (`"1,25"`) é aceita em idade e quantidades.
 
-**`classificar_arquivo(metadado: MetadadoArquivo) -> MetadadoArquivo`**
+### 3.4 Como a duplicidade de carga é evitada
 
--   **Parâmetro:** dicionário de metadados que deve conter `path` não vazio.
--   **Retorno:** uma nova cópia dos metadados, acrescida da chave `tipo_ocorrencia`.
--   **Comportamento:** preserva os demais campos recebidos e não modifica o dicionário original.
+A deduplicação é feita **por arquivo**, antes de qualquer normalização:
 
-O classificador é chamado pelo pipeline somente para arquivos cujo conteúdo foi considerado novo (`is_new=True`).
+| `is_new` (hash) | `name_exists` (nome) | O que acontece |
+| :-- | :-- | :-- |
+| `False` | qualquer | Conteúdo já ingerido: o arquivo é ignorado (não classifica, não normaliza, não insere). |
+| `True` | `False` | Arquivo inédito: insere em `informacoes_arquivo` e carrega as ocorrências. |
+| `True` | `True` | Mesmo nome, conteúdo novo: atualiza o registro em `informacoes_arquivo` (reaproveitando o `id`) e carrega as ocorrências. |
 
-### 3.7 `normalizer.py`
+Reforço no banco: `informacoes_arquivo.hash_sha256` é `UNIQUE` (veja [`database.md`](database.md)).
 
-Responsável por converter as linhas do DataFrame de cada planilha em dicionários com os campos esperados pela tabela `ocorrencias_crimes`. A escolha da rotina de normalização depende do valor canônico de `tipo_ocorrencia`.
+### 3.4.1 Limitações conhecidas do comportamento atual
 
-**`normalizer(df: pd.DataFrame, arquivo_id: int, tipo_ocorrencia: str) -> list[dict]`**
+> [!WARNING]
+> Pontos observados no código que afetam a idempotência e a observabilidade. Não são corrigidos pela documentação.
 
-- Recebe o DataFrame, o ID do arquivo em `informacoes_arquivo` e a categoria identificada pelo classificador.
-- Encaminha o DataFrame para a função específica da categoria.
-- Os normalizadores específicos exigem `arquivo_id > 0` e verificam as colunas obrigatórias da planilha.
-- Os registros incluem `arquivo_id`, `tipo_crime`, `municipio`, `ais`, `data_fato`, `hora_fato`, `dia_semana` e campos específicos da categoria. Campos não aplicáveis são preenchidos com `None`.
+1. **Sem transação por arquivo.** O registro em `informacoes_arquivo` (com o hash) é gravado **antes** da normalização e da carga. Se a normalização ou uma inserção em lote falhar depois disso, o hash já está no banco: na execução seguinte o arquivo será tratado como já ingerido (`is_new=False`) mesmo sem ter ocorrências completas.
+2. **Reprocessamento por nome não remove ocorrências antigas.** No caso `is_new=True` + `name_exists=True`, as linhas antigas ligadas àquele `arquivo_id` permanecem e as novas são inseridas junto, podendo gerar registros duplicados.
+3. **`arquivos_processados` inclui arquivos ignorados** (`is_new=False`), pois o contador é incrementado fora do `if`.
+4. **Limpeza fora de `finally`.** Falhas do crawler ou da atualização final do histórico interrompem a execução sem remover `TEMP_PATH`.
+5. **`historico_ingestoes.mensagem_erro` não é preenchida.** O traceback é apenas enviado ao log.
+6. **Status binário.** Basta uma falha para o histórico ficar `FALHA`, mesmo que os demais arquivos tenham sido carregados; e o processo termina com código de saída `0` nesse caso (apenas falhas fora do laço, como no crawler, encerram com erro).
+7. **Sem cache HTTP.** Como `TEMP_PATH` é apagado ao final, todas as planilhas são baixadas novamente a cada execução.
 
-**Funções auxiliares**
+`TODO`: avaliar tratamento transacional, preenchimento de `mensagem_erro` e status parcial.
 
-- `normalizar_texto(valor)`: retorna `None` para valores ausentes; nos demais casos, converte para texto, remove espaços nas extremidades, substitui sequências de espaços por um único espaço e aplica capitalização de título (`title()`).
-- `normalizar_data(valor)`: converte o valor para `datetime.date` usando `pandas.to_datetime(..., errors="raise")`.
-- `normalizar_hora(valor)`: retorna `None` para valores ausentes ou `"não informada"`; preserva valores que já sejam `datetime.time`; nos demais casos, converte para `datetime.time`.
-- `normalizar_idade(valor)`: retorna `None` para valores ausentes ou `"não informada"`/`"não informado"`; nos demais casos, converte para `float`. A validação do intervalo e da integralidade é feita nos normalizadores que utilizam idade.
-- `normalizar_quantidadeArmas(valor)`: converte para número inteiro. Retorna `None` quando ausente, não informada ou fracionária; valores fracionários são registrados como aviso.
-- `normalizar_quantidadeEntorpecente(valor)`: converte a quantidade para `float`, aceitando vírgula como separador decimal. Em caso de falha de conversão, registra aviso e retorna `None`.
-- `normalizar_ais(valor)`: normaliza o texto e retorna `None` quando o resultado contém `"Ais Não Identificada"`; caso contrário, retorna o texto normalizado.
+---
 
-**Normalizadores por categoria**
+## 4. Execução e operação
 
-| Função | Tipos de ocorrência atendidos |
-|---|---|
-| `normalizar_cvli(...)` | Crimes Violentos Letais e Intencionais (CVLI) |
-| `normalizar_animais_CVP_Furto_Incendio_Salvamento(...)` | Maus-tratos a animais, CVP, Furto, Incêndio e Busca e Salvamento |
-| `normalizar_armaDeFogo(...)` | Apreensão de armas de fogo |
-| `normalizar_preconceitoRacaOuCor_crimesSexuais_indigenas_leiMariaDaPenha(...)` | Preconceito de raça ou cor, Crimes Sexuais, Indígenas vítimas de crimes e Lei Maria da Penha |
-| `normalizar_entorpecentes(...)` | Apreensão de entorpecentes |
-| `normalizar_homofobiaETransfobia(...)` | Homofobia e Transfobia |
+### 4.1 Pré-requisitos
 
-**Colunas obrigatórias por grupo**
+- `.env` preenchido (veja a tabela completa de variáveis no [`README.md`](../README.md#5-pré-requisitos-e-configuração-do-ambiente)).
+- Para a ingestão: `url_sspds`, `url_sspds_historico`, `DOWNLOADER_TIMEOUT`, `TEMP_PATH`, `CHUNK_SIZE`, `HASH_CHUNK_SIZE`, `INSERT_CHUNK_SIZE`, `LOG_LEVEL`, `SUPABASE_URL`, `SUPABASE_KEY` (e, opcionalmente, `CRAWLER_TIMEOUT`).
+- Schema do banco criado (DDL em [`database.md`](database.md#6-script-ddl-completo-reprodução-do-schema)).
 
-| Normalizador | Colunas exigidas |
-|---|---|
-| CVLI | Município, AIS, Natureza, Data, Hora, Dia da Semana, Meio Empregado, Gênero, Idade da Vítima, Escolaridade da Vítima, Raça da Vítima |
-| Animais/CVP/Furto/Incêndio/Salvamento | Município, AIS, Data, Hora, Dia da Semana |
-| Armas de fogo | Município, AIS, Data, Hora, Dia da Semana, Quantidade |
-| Preconceito/Crimes Sexuais/Indígenas/Lei Maria da Penha | Município, AIS, Data, Hora, Dia da Semana, Gênero, Idade da Vítima, Escolaridade da Vítima, Raça da Vítima |
-| Entorpecentes | Município, AIS, Data, Hora, Dia da Semana, Quantidade (Kg), Tipo de Entorpecente |
-| Homofobia e Transfobia | Município, AIS, Data, Hora, Dia da Semana, Idade da Vítima, Escolaridade da Vítima, Raça da Vítima, Natureza, Identidade de Gênero, Orientação Sexual, Local |
+### 4.2 Executando
 
-**Regras de qualidade e sinalização**
+**Localmente** (a partir da raiz do repositório, com o ambiente virtual ativo):
 
-1. **Idade (`st_idade_invalida`)**
-   - Nos normalizadores CVLI, preconceito/crimes sexuais/indígenas/Lei Maria da Penha e homofobia/transfobia, a idade é convertida para `float` e sinalizada quando não é inteira ou está fora do intervalo de 0 a 130.
-   - `st_idade_invalida=True` indica idade fracionária, menor que zero ou maior que 130; `False` indica que a verificação não identificou essas condições.
-   - O valor numérico considerado inválido não é substituído por `None`: permanece em `vitima_idade` (como `float`), acompanhado da flag. Idades inteiras válidas são convertidas para `int`.
-   - Valores ausentes ou "não informados" tornam-se `None` e mantêm a flag como `False`.
-
-2. **Dia da semana (`st_dia_semana_divergente`)**
-   - Compara `Dia da Semana` com o dia calculado a partir de `Data`.
-   - A comparação ignora diferenças entre maiúsculas/minúsculas e remove o sufixo `-feira` antes de comparar.
-   - `True` indica divergência; `False` indica que a comparação não encontrou divergência.
-   - O valor informado é preservado em `dia_semana`; não é corrigido para coincidir com a data.
-   - Se o dia informado estiver ausente (`None`), a flag permanece `False`, pois a comparação só ocorre quando há um valor informado.
-   - A flag é gerada pelos seis grupos de normalização.
-
-3. **AIS não identificada**
-   - `normalizar_ais()` normaliza o texto e retorna `None` quando ele contém `"Ais Não Identificada"`.
-   - Assim, valores como `AIS Não Identificada (<nome_do_município>)` são convertidos para `None`, pois o município já está registrado separadamente.
-   - A regra é implementada por busca de substring, não por validação de um formato textual exato.
-
-**Campos normalizados**
-
-Os normalizadores montam um schema comum, com campos como `arquivo_id`, `tipo_crime`, `municipio`, `ais`, `data_fato`, `hora_fato`, `local_fato`, `dia_semana`, `natureza`, `meio_empregado`, `vitima_genero`, `vitima_idade`, `vitima_escolaridade`, `vitima_raca`, `vitima_orientacao_sexual`, `quantidade_armas`, `tipo_entorpecente`, `peso_entorpecente_kg` e as flags de qualidade
-aplicáveis.
-
-O roteamento utiliza os nomes canônicos exatos definidos no código. Uma categoria não mapeada gera `tipoOcorrenciaNaoEncontrado`, que é capturada pelo `normalizer()`.
-
-### 3.8 `insert.py`
-
-Centraliza as operações de inserção e atualização nas tabelas utilizadas pelo serviço de ingestão.
-
-**Histórico de ingestões**
-
--   `inserir_historico_ingestoes(dados: dict) -> int`: insere um registro em `historico_ingestoes` e retorna o ID do registro retornado pelo banco.
--   `atualizar_historico_ingestoes(id: int, dados: dict) -> list[dict]`: atualiza o registro de `historico_ingestoes` identificado pela coluna `id` e retorna o ID retornado pela operação.
-
-**Metadados dos arquivos**
-
--   `inserir_informacoes_arquivo(dados: dict) -> int`: insere um registro em
-    `informacoes_arquivo` e retorna seu ID.
--   `atualizar_informacoes_arquivo(id, dados) -> int`: atualiza um registro de `informacoes_arquivo` e retorna o ID retornado pela operação.
-
-**Registros de ocorrências**
-
--   `inserir_ocorrencias_crimes(dados: list[dict], tamanho_lote=tamanho_lote)`: divide a lista de ocorrências em lotes e insere cada lote na tabela `ocorrencias_crimes`.
--   O tamanho padrão do lote é obtido da variável de ambiente `INSERT_CHUNK_SIZE`.
-
-### 3.9 `cleanup.py`
-
-Responsável por remover o diretório temporário utilizado durante a ingestão.
-
-**`limpar_pasta_temporaria(caminho: str | Path = TEMP_PATH) -> None`**
-
--   Se o caminho não existir, registra a situação e retorna sem erro.
--   Se o caminho existir, mas não for um diretório, lança `NotADirectoryError`.
--   Se for um diretório, remove-o recursivamente com `shutil.rmtree`.
--   Falhas de remoção são registradas e propagadas como `OSError`.
-
-### 3.10 `pipeline.py`
-
-É o orquestrador do serviço. Executa a coleta, o processamento dos arquivos e a persistência dos dados.
-
-**`pipeline() -> None`**
-
-A função não recebe parâmetros e não retorna valor. Seu fluxo é:
-
-1.  Executa `crawler()` e obtém a lista de URLs das planilhas.
-2.  Cria um registro em `historico_ingestoes` com status `EM_ANDAMENTO` e a quantidade de arquivos encontrados.
-3.  Para cada URL:
-    1.  Baixa a planilha com `download_xlsx()`.
-    2.  Registra a data de coleta em UTC.
-    3.  Valida o arquivo com `validate_xlsx_file()`, calculando seu hash e consultando o banco pelo hash e pelo nome.
-    4.  Se `is_new` for `False`, não executa a classificação, normalização nem inserção das ocorrências para aquele arquivo.
-    5.  Se `is_new` for `True`, classifica o arquivo com `classificar_arquivo()`.
-    6.  Se `name_exists` for `True`, atualiza o registro de `informacoes_arquivo` identificado por `id_registro`. Nesse caminho, os campos atualizados incluem URL de download, hash,
-        período de dados, tamanho, data de coleta, data de atualização e ID da ingestão. O pipeline utiliza o ID retornado pela atualização como `arquivo_id`.
-    7.  Se `name_exists` for `False`, insere um novo registro em `informacoes_arquivo`, incluindo nome do arquivo, URL, hash, tipo de ocorrência, período de dados, tamanho, data de coleta e ID da ingestão. O ID retornado pela inserção passa a ser o `arquivo_id`.
-    8.  Lê a planilha com `pandas.read_excel()`.
-    9.  Chama `normalizer(df=..., arquivo_id=..., tipo_ocorrencia=...)`.
-    10. Insere os registros normalizados em `ocorrencias_crimes`, em lotes.
-    11. Extrai os anos presentes em `data_fato` e atualiza `periodo_dados` nos metadados do arquivo. Quando há um único ano, registra esse ano; quando há mais de um, registra o
-        intervalo entre o menor e o maior ano.
-4.  Se ocorrer uma exceção durante o processamento de um arquivo, o pipeline registra a falha, incrementa o contador de falhas e continua para o próximo arquivo.
-5.  Ao final do processamento, atualiza o histórico com a data de fim, os totais de arquivos processados e de falhas, e status `SUCESSO`, caso não tenha falhas no processo.
-6.  Executa `limpar_pasta_temporaria()` ao final do fluxo normal.
-
-**Observações importantes sobre o comportamento atual**
-
--   A contagem de `arquivos_processados` é incrementada fora da condição `is_new`. Assim, um arquivo cujo hash já existe também pode ser contabilizado como processado, embora não seja normalizado nem tenha ocorrências inseridas novamente.
--   Limitação do código atual: as exceções ocorridas durante o processamento individual dos arquivos são capturadas pelo `try/except` do laço, permitindo que o pipeline continue. Entretanto, falhas ocorridas fora desse bloco, como durante o crawler ou a atualização do histórico, podem interromper a execução antes da limpeza do diretório temporário. A limpeza não está protegida por um bloco `finally`.
--   O caminho de atualização por nome existente não atualiza `nome_arquivo` nem `tipo_crime`; ele atualiza os demais metadados indicados no código.
--   O `arquivo_id` associa os registros normalizados ao registro correspondente em `informacoes_arquivo`.
-
-### 3.11 `exception.py`
-
-Define a hierarquia de exceções do serviço.
-
-- `IngestionError`: classe-base para erros esperados no pipeline.
-- `VariavelAmbienteNaoEncontrada`: variável de ambiente obrigatória
-  ausente.
-- `EstruturaCSSDoSiteAlterado`: container esperado dos indicadores
-  detalhados não encontrado no HTML.
-- `ValorInteiroInvalido`: valor que não pôde ser convertido para
-  inteiro.
-- `NormalizerError`: classe-base para exceções relacionadas à
-  normalização.
-- `ColunasAusentesNaPlanilha`: uma ou mais colunas obrigatórias não
-  estão presentes no DataFrame.
-- `tipoOcorrenciaNaoEncontrado`: tipo de ocorrência não mapeado pelo
-  normalizador.
-- `DownloadError`: classe-base para falhas de download ou gravação.
-- `DownloadHTTPError`: resposta HTTP de erro.
-- `DownloadTimeoutError`: timeout na requisição.
-- `DownloadConnectionError`: falha de conexão.
-- `FileWriteError`: falha ao gravar o arquivo baixado.
-- `FileValidationError`: falha ao localizar, ler ou calcular o hash
-  de um arquivo.
-- `DatabaseLookupError`: falha ao consultar dados no banco.
-- `TipoOcorrenciaNaoIdentificado`: nome de arquivo sem correspondência
-  única com as regras de classificação; herda diretamente de
-  `ValueError`, não de `IngestionError`.
-
-As exceções de download, validação, consulta e classificação são
-utilizadas pelos módulos analisados. A exceção de normalização
-`tipoOcorrenciaNaoEncontrado` é capturada dentro de `normalizer()`;
-conforme descrito na seção anterior, não é propagada ao chamador por
-essa função.
-
-### 3.12 `dockerfile`
-
-Define a imagem e o ambiente de execução do serviço de ingestão.
-
-- Utiliza a imagem base `python:3.13.4`.
-- Define `/workspace` como diretório de trabalho.
-- Copia `requirements.txt` e instala as dependências com
-  `pip install --no-cache-dir -r requirements.txt`.
-- Instala o pacote `ca-certificates` e atualiza o repositório de
-  certificados do sistema.
-- Copia `certs/amazon-rsa-2048-m01.crt` para
-  `/usr/local/share/ca-certificates/` e executa `update-ca-certificates`.
-- Define `REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt`,
-  para que as requisições feitas com `requests` utilizem o conjunto de
-  certificados configurado no container.
-- Copia os diretórios `ingestion/`, `database/` e
-  `logging_system/` para `/workspace`.
-- Define como comando padrão
-  `python -m ingestion.pipeline`.
-
-O Dockerfile, portanto, inclui no container não apenas o pacote de
-ingestão, mas também os módulos de acesso ao banco e de configuração de
-logs, além do certificado CA adicional.
-
-## 4. Fluxo de ingestão de dados
-
-``` text
-                 ┌─────────────────────┐
-                 │       crawler       │
-                 │ Coleta URLs SSPDS   │
-                 └──────────┬──────────┘
-                            │ lista_url
-                            ▼
-                 ┌─────────────────────┐
-                 │      pipeline       │
-                 │ Cria histórico      │
-                 └──────────┬──────────┘
-                            │
-                            ▼
-                 ┌─────────────────────┐
-                 │     downloader      │
-                 │ Baixa arquivo XLSX  │
-                 └──────────┬──────────┘
-                            │ arquivo local
-                            ▼
-                 ┌─────────────────────┐
-                 │      validator      │
-                 │ SHA-256 + consultas │
-                 │ por hash e nome     │
-                 └──────────┬──────────┘
-                            │
-                 ┌──────────┴──────────┐
-                 │ is_new?             │
-                 └──────────┬──────────┘
-                     Não    │    Sim
-                ┌───────────┘     └───────────────┐
-                ▼                                 ▼
-        Não reprocessa                    ┌─────────────────┐
-        ocorrências                       │    classifier   │
-                                          │ Identifica tipo  │
-                                          └────────┬────────┘
-                                                   │
-                                                   ▼
-                                          ┌─────────────────┐
-                                          │ insert / update │
-                                          │ informacoes_    │
-                                          │ arquivo         │
-                                          └────────┬────────┘
-                                                   │ arquivo_id
-                                                   ▼
-                                          ┌─────────────────┐
-                                          │   normalizer    │
-                                          │ DataFrame + ID  │
-                                          │ + tipo          │
-                                          └────────┬────────┘
-                                                   │ registros
-                                                   ▼
-                                          ┌─────────────────┐
-                                          │     insert      │
-                                          │ ocorrencias_    │
-                                          │ crimes (lotes)  │
-                                          └────────┬────────┘
-                                                   │
-                                                   ▼
-                                          ┌─────────────────┐
-                                          │ Atualiza período│
-                                          │ e histórico     │
-                                          └────────┬────────┘
-                                                   │
-                                                   ▼
-                                          ┌─────────────────┐
-                                          │     cleanup     │
-                                          │ Remove temporário│
-                                          └─────────────────┘
+```bash
+python -m ingestion.pipeline
 ```
 
-## 5. Persistência no banco de dados
+> Use `-m`: o pacote usa imports relativos, então `python ingestion/pipeline.py` não funciona.
 
-O pipeline utiliza as seguintes tabelas:
-  `historico_ingestoes`: Registra o início e o encerramento de cada execução, incluindo status e contadores.
+**Via Docker Compose:**
 
-  `informacoes_arquivo`: Armazena os metadados dos arquivos, como nome, URL, hash, categoria,   tamanho, período e datas de coleta.
+```bash
+docker compose build ingestion
+docker compose up ingestion          # ou: docker compose run --rm ingestion
+```
 
-  `ocorrencias_crimes`: Armazena os registros normalizados extraídos das planilhas.
+O container executa `python -m ingestion.pipeline` e encerra ao terminar. O `compose.yml` monta `./ingestion` em `/workspace/ingestion` e injeta o `.env`.
 
-A associação entre o arquivo de origem e suas ocorrências é realizada pelo campo `arquivo_id`, encaminhado ao normalizador e incluído nos registros normalizados.
+### 4.3 Parâmetros
 
-## 6. Variáveis de ambiente identificadas
+O pipeline **não aceita argumentos de linha de comando**: não há filtros por ano, categoria ou reprocessamento forçado. Todo o comportamento é controlado por variáveis de ambiente (`url_sspds`, `url_sspds_historico`, timeouts, tamanhos de bloco e de lote). `TODO`: avaliar uma CLI com filtros.
 
-  `TEMP_PATH`: Diretório temporário utilizado para armazenar os arquivos baixados e posteriormente removido pela limpeza.
+### 4.4 Reprocessar um arquivo
 
-  `DOWNLOADER_TIMEOUT`: Timeout padrão das requisições de download.
+Como a duplicidade é decidida pelo hash, não há *flag* de reprocessamento. Pelo schema, `ocorrencias_crimes.arquivo_id` tem `ON DELETE CASCADE`: remover o registro do arquivo em `informacoes_arquivo` remove também suas ocorrências, e a próxima execução o tratará como inédito.
 
-  `CHUNK_SIZE`: Tamanho dos blocos de leitura durante o download.
+```sql
+-- CUIDADO: apaga o arquivo e, em cascata, todas as suas ocorrências.
+DELETE FROM public.informacoes_arquivo WHERE nome_arquivo = '<nome-do-arquivo>.xlsx';
+```
 
-  `HASH_CHUNK_SIZE`: Tamanho dos blocos utilizados no cálculo do SHA-256.
+### 4.5 Acompanhando uma execução
 
-  `INSERT_CHUNK_SIZE`: Quantidade de registros enviados por lote para inserção em `ocorrencias_crimes`.
+- **Banco:** a tabela `historico_ingestoes` guarda `data_inicio`, `data_fim`, `status` (`EM_ANDAMENTO`, `SUCESSO`, `FALHA`), `qtd_arquivos_encontrados`, `qtd_arquivos_processados` e `qtd_arquivos_falhas`.
+- **Logs:** saída padrão do processo/container (formato descrito na seção 5).
+- **Metadados por arquivo:** `informacoes_arquivo` (nome, URL, hash, tipo, período, tamanho, datas e `ingestao_id`).
 
-As variáveis são obtidas por `get_variavel_ambiente()` e convertidas para inteiro com `recebeInteiro()` ou com a conversão utilizada diretamente no módulo correspondente.
+---
+
+## 5. Tratamento de erros, logs e testes
+
+### 5.1 Hierarquia de exceções (`exception.py`)
+
+```text
+Exception
+├── IngestionError
+│   ├── VariavelAmbienteNaoEncontrada
+│   ├── EstruturaCSSDoSiteAlterado        # layout do site mudou
+│   ├── ValorInteiroInvalido
+│   ├── NormalizerError
+│   │   ├── ColunasAusentesNaPlanilha     # schema da planilha mudou
+│   │   └── tipoOcorrenciaNaoEncontrado
+│   ├── DownloadError
+│   │   ├── DownloadHTTPError
+│   │   ├── DownloadTimeoutError
+│   │   ├── DownloadConnectionError
+│   │   └── FileWriteError
+│   ├── FileValidationError
+│   └── DatabaseLookupError
+└── ValueError
+    └── TipoOcorrenciaNaoIdentificado     # não herda de IngestionError
+```
+
+Falhas de banco vindas de `database/` (`ErroOperacaoBanco`, `ErroConexaoBanco`) não fazem parte desta hierarquia; em `validator.py` consultas que falham são encapsuladas em `DatabaseLookupError`.
+
+### 5.2 Como cada tipo de falha é tratado
+
+| Situação | Onde ocorre | Resultado |
+| :-- | :-- | :-- |
+| Falha de rede ao listar a página (timeout, conexão, HTTP) | `crawler` | Log de erro e exceção propagada. Não há arquivos a processar; a execução **aborta** e o histórico não é criado. |
+| Alteração de layout do site | `crawler` | `EstruturaCSSDoSiteAlterado` (log + propagação). Aborta a execução. Corrigir os seletores em `extrair_links_atuais` / `extrair_links_historicos`. |
+| Falha de rede ao baixar uma planilha | `downloader` | Exceção específica; o arquivo conta como falha e o pipeline segue. |
+| Planilha corrompida/ilegível | `validator` / `pandas` | Exceção capturada no laço; conta como falha. |
+| Erro de schema (colunas ausentes, tipo desconhecido) | `normalizer` | Log da falha, exceção relançada, falha contabilizada. |
+| Erro de banco | `database.repository` / `insert` | `ErroOperacaoBanco` ou `DatabaseLookupError`; falha contabilizada. |
+| Variável de ambiente ausente | import dos módulos | `VariavelAmbienteNaoEncontrada` antes de qualquer processamento. |
+
+### 5.3 Logs
+
+Configurados por `logging_system/logging_config.py` (`configure_logging()`):
+
+Exemplo ilustrativo (os números variam a cada execução):
+
+```text
+2026-11-12T10:30:00 | INFO | ingestion.crawler | Crawler concluído: 14 links atuais, 90 históricos e 100 únicos no total.
+```
+
+- Formato: `%(asctime)s | %(levelname)s | %(name)s | %(message)s`, data `%Y-%m-%dT%H:%M:%S`.
+- Nível definido por `LOG_LEVEL` (`INFO` se o valor não for um nível válido).
+- Falhas por arquivo são registradas com traceback (`logger.exception`).
+
+### 5.4 Testes
+
+Os testes do módulo ficam em [`tests/test_ingestion.py`](../tests/test_ingestion.py), com fixtures em [`tests/conftest.py`](../tests/conftest.py) (HTML sintético das páginas atual e histórica, DataFrames de exemplo por categoria). Usam `monkeypatch`/`unittest.mock`, portanto **não acessam a rede nem o banco**.
+
+```bash
+# Com o ambiente virtual ativo e o .env preenchido (as configurações são lidas no import)
+python -m pytest tests/test_ingestion.py
+
+# Um teste ou grupo específico
+python -m pytest tests/test_ingestion.py -k "normalizar_cvli"
+python -m pytest tests/test_ingestion.py -k "crawler"
+```
+
+Cobertura atual do módulo:
+
+| Componente                                    | Coberto por testes                                                                                                                                                                                                                                                                                                                       |
+| :-------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `crawler`                                     | Sim — extração atual/histórica, deduplicação, erros HTTP/rede, estrutura ausente, timeout inválido                                                                                                                                                                                                                                       |
+| `helpers`                                     | Sim                                                                                                                                                                                                                                                                                                                                      |
+| `normalizer`                                  | Sim — conversões, cada grupo de normalização, colunas ausentes, `arquivo_id` inválido, município vazio, divergência de dia da semana                                                                                                                                                                                                     |
+| `classifier`                                  | Sim — categorias, nome vazio, categoria desconhecida/ambígua, metadados inválidos                                                                                                                                                                                                                                                        |
+| `validator`                                   | Sim — hash, consulta por hash e nome, extensão e arquivo inválidos, erros do banco                                                                                                                                                                                                                                                       |
+| `downloader`, `insert`, `cleanup`, `pipeline` | Sem testes dedicados: são módulos de orquestração e de apoio, sem regra de transformação própria. O `downloader` apenas baixa arquivos, o `insert` delega para funções de `database/repository.py` (cobertas em `tests/test_database.py`), o `cleanup` apenas apaga a pasta temporária e o `pipeline` apenas encadeia as demais funções. |
+
+Os testes de integração com o Supabase real estão em `tests/test_database.py` (marcador `database`) e fazem parte da documentação do banco; para excluí-los: `python -m pytest -m "not database"`.
+
+### 5.5 Erro de certificado SSL (`CERTIFICATE_VERIFY_FAILED`)
+
+**Problema.** Ao acessar o portal de estatísticas da SSPDS (`www.ce.gov.br`) por HTTPS, o servidor envia o certificado do domínio (`*.ce.gov.br`), mas **não envia o certificado intermediário Amazon RSA 2048 M01**. Clientes que não buscam o intermediário sozinhos, como o Python com `requests` em Linux/Docker, não conseguem validar a cadeia e falham com `CERTIFICATE_VERIFY_FAILED`. Navegadores e o Windows funcionam porque obtêm o intermediário automaticamente pelo mecanismo AIA (*Authority Information Access*).
+
+**Solução adotada.**
+
+1. O certificado intermediário Amazon RSA 2048 M01 foi obtido, convertido para `.crt` e validado pela impressão digital SHA-256.
+2. Foi incluído no repositório (`certs/amazon-rsa-2048-m01.crt`; há também a versão `.der`).
+3. O `ingestion/dockerfile` o copia para `/usr/local/share/ca-certificates/` e executa `update-ca-certificates`.
+4. `REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt` indica ao `requests` o conjunto de certificados do sistema.
+
+Assim o crawler faz requisições HTTPS **sem desabilitar a validação** (`verify=False`), preservando a verificação dos certificados.
+
+> [!NOTE]
+> A solução depende do intermediário usado pelo servidor. Se o portal alterar sua cadeia de certificados, o arquivo em `certs/` precisará ser atualizado.
+
+> [!TIP]
+> A configuração acima vale para a imagem Docker da ingestão. Ao rodar localmente em Linux, o mesmo erro pode ocorrer; no Windows, o problema não aparece.
+
+---
+
+## 6. Variáveis de ambiente do serviço
+
+| Variável | Uso no módulo | Obrigatória |
+| :-- | :-- | :-- |
+| `url_sspds` | URL da página de estatísticas atuais (`crawler`). | Sim |
+| `url_sspds_historico` | URL da página histórica (`crawler`). | Sim |
+| `CRAWLER_TIMEOUT` | Timeout do crawler; padrão 10 s se ausente ou inválida. | Não |
+| `DOWNLOADER_TIMEOUT` | Timeout do download (`downloader`). | Sim |
+| `TEMP_PATH` | Pasta temporária de downloads (`downloader`, `validator`, `cleanup`). | Sim |
+| `CHUNK_SIZE` | Bloco de download; aceita expressão (`eval`). | Sim |
+| `HASH_CHUNK_SIZE` | Bloco de leitura do SHA-256; aceita expressão (`eval`). | Sim |
+| `INSERT_CHUNK_SIZE` | Registros por lote (`insert`). | Sim |
+| `LOG_LEVEL` | Nível de log (`logging_system`). | Sim |
+| `SUPABASE_URL` / `SUPABASE_KEY` | Conexão com o banco (`database`). | Sim |
+
+Valores de exemplo e demais detalhes: [`.env.example`](../.env.example) e [`README.md`](../README.md#5-pré-requisitos-e-configuração-do-ambiente).
+
+---
+
+## 7. Imagem Docker (`ingestion/dockerfile`)
+
+- Base `python:3.13.4`, diretório de trabalho `/workspace`.
+- Instala as dependências de `requirements.txt` e o pacote `ca-certificates`.
+- Copia `certs/amazon-rsa-2048-m01.crt` para `/usr/local/share/ca-certificates/`, executa `update-ca-certificates` e define `REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt`. O motivo está na [seção 5.5](#55-erro-de-certificado-ssl-certificate_verify_failed): o portal não envia o certificado intermediário Amazon RSA 2048 M01.
+- Copia `ingestion/`, `database/` e `logging_system/`.
+- Comando padrão: `python -m ingestion.pipeline`.
+- O `.env` **não** é copiado para a imagem: é injetado pelo `env_file` do `compose.yml`.

@@ -96,104 +96,7 @@ flowchart LR
 | Contêineres | Docker e Docker Compose |
 | Testes | pytest (com `TestClient` do FastAPI) |
 
-2. **Configuração de Variáveis de Ambiente (`.env`):**
-Crie um arquivo `.env` na raiz do projeto com as configurações gerais do serviço:
-```env
-# Configurações do serviço de ingestão de dados
-url_sspds="https://www.ce.gov.br/sspds/estatisticas/"
-```
-Observação: Utilize o arquivo `.env.example`.
-
----
-### Via Docker
-####  Execução Individual dos Serviços
-
-##### A. Serviço de API
-
-A API é responsável por disponibilizar os dados processados via endpoints.
-###### Execução via Docker (Individual)
-```bash
-# Construir a imagem Docker
-docker compose build api
-
-# Rodar o container da API 
-docker compose up api
-```
-
----
-##### B. Serviço de Ingestão (Ingestion)
-
-O serviço de ingestão executa a coleta, transforma os dados em json e salva na pasta `database`.
-###### Execução via Docker (Individual)
-```bash
-# Criar a imagem do serviço de Ingestion
-docker compose build ingestion
-
-#Rodar o container
-docker compose up ingestion
-```
-
----
-#### 🔗 Execução Conjunta via Docker Compose
-
-1. **Subir todos os serviços:**
-   ```bash
-   docker compose up --build
-   ```
-
----
-#### 🛠️ Parar Serviços Docker
-
-1. Aperte `Ctrl + C` para finalizar os processos docker
-2. Verifique se ainda tem algum serviço rodando:
-	- Rode o comando `docker compose ps` para listar todos os serviços que estão rodando no momento. Caso tenha, rode `docker compose down` para finalizar. 
-
----
-### 💻 Execução Local (Sem Docker)
-
-Caso prefira rodar a aplicação diretamente no seu ambiente Python:
-
-1. **Criar e ativar o ambiente virtual:**
-```bash
-   # Windows (PowerShell)
-   python -m venv .venv
-   .venv\Scripts\Activate.ps1
-
-   # Linux / macOS
-   python3 -m venv .venv
-   source .venv/bin/activate
-```
-
-2. **Instalar as dependências:**
-```bash
-pip install -r requirements.txt
-```
-
-3. **Executar a Ingestão de Dados:**
-```bash
-python ingestion/pipeline.py
-```
-   *(Os dados processados serão salvos na pasta database/dados.json).*
-
-4. **Executar a API:**
-```bash
-uvicorn app.main:app --reload
-```
-
----
-### 🧪 Verificação da Aplicação
-
-Com a API rodando, você pode acessar as interfaces de documentação interativa para testar os endpoints:
-
-1. **Documentação Interativa (Swagger UI) — *A principal***
-   * **Link:** `http://localhost:8000/docs`
-   * **Para que serve:** Interface visual completa onde você consegue visualizar todas as rotas (`/crimes/`, `/crimes/cvli`, `/crimes/vitimas`, `/crimes/preconceito`, `/crimes/operacionais`), testar os parâmetros de filtro em tempo real clicando em **"Try it out"** e verificar os payloads de resposta em JSON.
-
-2. **Documentação Alternativa (ReDoc)**
-   * **Link:** `http://localhost:8000/redoc`
-   * **Para que serve:** Uma opção alternativa de visualização estruturada da documentação, excelente para leitura detalhada dos contratos de resposta e schemas de dados.
-
-- **Status da Ingestão:** Retornará no terminal a quantidade de URLs coletadas e os dados salvos em `database/dados.json`.
+As versões exatas estão fixadas em [`requirements.txt`](requirements.txt).
 
 ---
 
@@ -366,6 +269,7 @@ uvicorn app.main:app --reload --port 8000
 | `http://localhost:8000/` | Mensagem de boas-vindas e atalho para `/docs`. |
 | `http://localhost:8000/health` | `{"status": "ok"}` |
 | `http://localhost:8000/docs` | Documentação interativa (Swagger UI). |
+| `http://localhost:8000/redoc` | Uma opção alternativa de visualização estruturada da documentação, excelente para leitura detalhada dos contratos de resposta e schemas de dados. |
 | `http://localhost:8000/crimes/cvli?limit=5` | Primeiras 5 ocorrências de CVLI (veja o aviso da [seção 2](#2-arquitetura-e-fluxo-de-dados) sobre `dados.json`). |
 
 Detalhes de parâmetros, schemas e códigos de resposta (`200`, `404`, `422`) em [`docs/api.md`](docs/api.md).

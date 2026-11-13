@@ -4,6 +4,7 @@ from typing import Optional
 
 class CrimeBaseSchema(BaseModel):
     """Atributos que todo crime tem e servirá de herança para os outros tipos de crime"""
+    tipo_crime: Optional[str] = None
     ais: Optional[str] = None
     municipio: str
     data_fato: date

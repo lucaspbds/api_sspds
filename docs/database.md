@@ -388,12 +388,15 @@ Módulo principal responsável pelas operações de conexão e persistência no 
   - `VariavelAmbienteNaoEncontrada`: Se `cliente` não for informado e faltar variável de ambiente ao criar a conexão.
   - `ErroConexaoBanco`: Se houver falha na comunicação ou autenticação com o banco de dados.
 
-#### `consultar_registros(tabela: str, filtros: Optional[Dict[str, Any]] = None, limite: Optional[int] = None, colunas: str = "*", cliente: Optional[Client] = None) -> List[Dict[str, Any]]`
-- **Descrição:** Realiza uma operação de leitura (`SELECT`) em uma tabela do banco com suporte a filtros de igualdade e limite de registros.
+#### `consultar_registros(tabela: str, filtros: Optional[Dict[str, Any]] = None, limite: Optional[int] = None, coluna_data: Optional[str] = None, data_inicio: Optional[Any] = None, data_fim: Optional[Any] = None, colunas: str = "*", cliente: Optional[Client] = None) -> List[Dict[str, Any]]`
+- **Descrição:** Realiza uma operação de leitura (`SELECT`) em uma tabela do banco com suporte a filtros de igualdade, intervalo de datas e limite de registros.
 - **Parâmetros:**
   - `tabela` (`str`): Nome da tabela a ser consultada no banco de dados.
-  - `filtros` (`Optional[Dict[str, Any]]`): Dicionário opcional de pares `{coluna: valor}` para filtrar os registros (`WHERE coluna = valor`).
+  - `filtros` (`Optional[Dict[str, Any]]`): Dicionário opcional de pares `{coluna: valor}` para filtrar os registros por igualdade (`WHERE coluna = valor`).
   - `limite` (`Optional[int]`): Quantidade máxima de registros a serem retornados (deve ser maior que zero).
+  - `coluna_data` (`Optional[str]`): Nome da coluna temporal a ser utilizada no filtro por intervalo (ex: `'data_fato'`, `'data_coleta'`).
+  - `data_inicio` (`Optional[Any]`): Data ou carimbo temporal inicial do intervalo inclusivo (`WHERE coluna >= data_inicio`).
+  - `data_fim` (`Optional[Any]`): Data ou carimbo temporal final do intervalo inclusivo (`WHERE coluna <= data_fim`).
   - `colunas` (`str`): Colunas a serem selecionadas separadas por vírgula (padrão `'*'`).
   - `cliente` (`Optional[Client]`): Instância opcional do cliente Supabase.
 - **Retorno:** `List[Dict[str, Any]]` — Lista de dicionários representando os registros encontrados.

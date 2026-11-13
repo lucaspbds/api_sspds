@@ -269,6 +269,7 @@ uvicorn app.main:app --reload --port 8000
 | `http://localhost:8000/` | Mensagem de boas-vindas e atalho para `/docs`. |
 | `http://localhost:8000/health` | `{"status": "ok"}` |
 | `http://localhost:8000/docs` | Documentação interativa (Swagger UI). |
+| `http://localhost:8000/redoc` | Uma opção alternativa de visualização estruturada da documentação, excelente para leitura detalhada dos contratos de resposta e schemas de dados. |
 | `http://localhost:8000/crimes/cvli?limit=5` | Primeiras 5 ocorrências de CVLI (veja o aviso da [seção 2](#2-arquitetura-e-fluxo-de-dados) sobre `dados.json`). |
 
 Detalhes de parâmetros, schemas e códigos de resposta (`200`, `404`, `422`) em [`docs/api.md`](docs/api.md).

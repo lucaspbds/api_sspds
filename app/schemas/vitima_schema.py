@@ -1,36 +1,39 @@
+from typing import Any, Optional
+
+from pydantic import model_validator
+
 from app.schemas.base_schema import CrimeBaseSchema
-from typing import Optional
-from pydantic import Field, ConfigDict, model_validator
+
+_IDADE_NAO_INFORMADA = {
+    "não informada", "nao informada", "nao informado",
+    "não informado", "", "none", "null",
+}
+
 
 class CrimeComVitimaResponse(CrimeBaseSchema):
-    """Schema específico para crimes de Maria da Penha, Sexuais, Indígenas"""
-    vitima_genero: Optional[str] = Field(None, alias="Gênero")               
-    vitima_idade: Optional[int] = Field(None, alias="Idade da Vítima")       
-    vitima_escolaridade: Optional[str] = Field(None, alias="Escolaridade da Vítima")  
-    vitima_raca: Optional[str] = Field(None, alias="Raça da Vítima")        
+    """Schema específico para crimes de Maria da Penha, Sexuais, Indígenas."""
+    vitima_genero: Optional[str] = None
+    vitima_idade: Optional[int] = None
+    vitima_escolaridade: Optional[str] = None
+    vitima_raca: Optional[str] = None
 
-    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
+    @model_validator(mode="before")
+    @classmethod
+    def limpar_dados_brutos(cls, values: Any) -> Any:
+        """
+        Trata idades que vêm como texto ("Não Informada") no banco.
+        O Pydantic espera int em `vitima_idade`; se vier texto, vira None.
+        Sem isso, uma única linha com texto derrubaria a resposta inteira (500).
+        """
+        if isinstance(values, dict):
+            idade = values.get("vitima_idade")
+            if isinstance(idade, str) and idade.strip().lower() in _IDADE_NAO_INFORMADA:
+                # Copia o dicionário para não alterar o registro original recebido.
+                values = {**values, "vitima_idade": None}
+        return values
 
 
 class CvliResponse(CrimeComVitimaResponse):
-    """Schema para Crimes Violentos Letais Intencionais (CVLI)"""
-    natureza: Optional[str] = Field(None, alias="Natureza")
-    meio_empregado: Optional[str] = Field(None, alias="Meio Empregado")   
-
-    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
-
-# Validador para tratar idades que vêm como texto ("Não Informada")
-# Razão: o Pydantic espera um inteiro na idade mas alguma colunas estão com str
-# Em específico essa de idade
-    @model_validator(mode='before')
-    @classmethod
-    def limpar_dados_brutos(cls, values: dict) -> dict:
-        if isinstance(values, dict):
-            # Se a idade vier como texto inválido, transformamos em None de forma segura
-            idade = values.get("Idade da Vítima")
-            if idade in ["Não Informada", "Não informada", "nao informada", "NAO INFORMADA", "", None]:
-                values["Idade da Vítima"] = None
-                
-            # Se houver outros campos que venham com lixo de texto, pode limpá-los aqui também!
-            
-        return values
+    """Schema para Crimes Violentos Letais Intencionais (CVLI)."""
+    natureza: Optional[str] = None
+    meio_empregado: Optional[str] = None

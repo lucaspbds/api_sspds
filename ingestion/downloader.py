@@ -15,13 +15,13 @@ from .exception import (
     FileWriteError,
 )
 from .config import get_variavel_ambiente
-from .helpers import recebeInteiro
+from .helpers import recebeInteiro, avaliar_expressao_inteira
 
 configure_logging()
 logger = logging.getLogger(__name__)
 
 TIMEOUT_SECONDS = recebeInteiro(get_variavel_ambiente("DOWNLOADER_TIMEOUT"))
-CHUNK_SIZE = recebeInteiro(eval(get_variavel_ambiente("CHUNK_SIZE")))
+CHUNK_SIZE = avaliar_expressao_inteira(get_variavel_ambiente("CHUNK_SIZE"))
 DEFAULT_PATH = get_variavel_ambiente("TEMP_PATH")
 
 def download_xlsx(url: str,

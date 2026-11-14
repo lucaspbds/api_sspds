@@ -1,3 +1,4 @@
+from typing import Dict
 from fastapi import FastAPI
 from app.exception import registrar_exception_handlers
 from app.routers import crimes
@@ -8,21 +9,23 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Registra os tratamentos de erro 
+# Registra os tratamentos de erro
 registrar_exception_handlers(app)
 
 # Incluindo o roteador de crimes
 app.include_router(crimes.router)
 
-@app.get("/")
-def root():
+
+@app.get("/", summary="Raiz da aplicação", tags=["Status"])
+def root() -> Dict[str, str]:
     return {
         "message": "API SSPDS funcionando com sucesso!",
-        "docs_url": "/docs"
+        "docs_url": "/docs",
     }
 
-@app.get("/health")
-def health():
+
+@app.get("/health", summary="Verificação de saúde", tags=["Status"])
+def health() -> Dict[str, str]:
     return {
-        "status": "ok"
+        "status": "ok",
     }

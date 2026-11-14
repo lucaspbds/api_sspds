@@ -1,20 +1,35 @@
 import logging
+from typing import Union
 
 from fastapi import FastAPI, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-# Exceções da camada de banco de dados.
+# Exceções da camada de banco de dados, que a API também precisa traduzir em respostas HTTP.
+# A `VariavelAmbienteNaoEncontrada` do banco é importada com outro nome para não colidir
+# com a da própria API (definida abaixo): as duas têm handler.
 from database.exceptions import (
     ErroConexaoBanco,
     ErroOperacaoBanco,
-    VariavelAmbienteNaoEncontrada,
+)
+from database.exceptions import (
+    VariavelAmbienteNaoEncontrada as VariavelAmbienteNaoEncontradaBanco,
 )
 
 logger = logging.getLogger("app.exception")
 
 # ---- Exceções customizadas ----
+
+
+class VariavelAmbienteNaoEncontrada(Exception):
+    """Lançada por `app.config` quando uma variável de ambiente obrigatória não está definida."""
+
+    def __init__(self, nome_variavel: str):
+        self.nome_variavel = nome_variavel
+        super().__init__(
+            f"A variável de ambiente obrigatória '{nome_variavel}' não foi encontrada."
+        )
 
 
 class RecursoNaoEncontrado(Exception):
@@ -99,9 +114,13 @@ async def erro_operacao_banco_handler(
 
 
 async def variavel_ambiente_handler(
-    request: Request, exc: VariavelAmbienteNaoEncontrada
+    request: Request,
+    exc: Union[VariavelAmbienteNaoEncontrada, VariavelAmbienteNaoEncontradaBanco],
 ) -> JSONResponse:
-    """Erro de infraestrutura/configuração (500). O nome da variável só vai para o log."""
+    """
+    Erro de infraestrutura/configuração (500). O nome da variável só vai para o log.
+    Cobre a exceção da API (`app.config`) e a da camada de banco (`database.config`).
+    """
     logger.error(
         "Variável de ambiente ausente em %s %s: %s", request.method, request.url.path, exc,
     )
@@ -139,4 +158,5 @@ def registrar_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(ErroConexaoBanco, erro_conexao_banco_handler)
     app.add_exception_handler(ErroOperacaoBanco, erro_operacao_banco_handler)
     app.add_exception_handler(VariavelAmbienteNaoEncontrada, variavel_ambiente_handler)
+    app.add_exception_handler(VariavelAmbienteNaoEncontradaBanco, variavel_ambiente_handler)
     app.add_exception_handler(Exception, global_exception_handler)

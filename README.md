@@ -58,7 +58,7 @@ flowchart LR
     end
 
     subgraph API["API (app/ — FastAPI)"]
-        R["GET /crimes/cvli"]
+        R["GET /crimes/*<br/>(geral, cvli, vitimas,<br/>preconceito, operacionais)"]
     end
 
     P1 --> C
@@ -66,7 +66,7 @@ flowchart LR
     I --> T1
     I --> T2
     I --> T3
-    J[/"database/dados.json"/] --> R
+    T3 --> R
     R --> U(["Cliente HTTP"])
 ```
 
@@ -76,11 +76,10 @@ flowchart LR
 2. Para cada URL, o pipeline **baixa** a planilha, calcula o **SHA-256** e consulta o banco. Se o conteúdo já foi ingerido, a planilha é ignorada.
 3. Planilhas novas são **classificadas**, têm seus metadados gravados em `informacoes_arquivo`, são lidas com `pandas`, **normalizadas** e inseridas em `ocorrencias_crimes` em lotes, ligadas ao arquivo de origem pela chave estrangeira `arquivo_id`.
 4. Cada execução é registrada em `historico_ingestoes` (status, contadores, datas).
-5. A **API** expõe os dados em JSON.
+5. A **API** consulta `ocorrencias_crimes` no Supabase (`app/services/crime_service.py`) e expõe os dados em JSON, com filtros por município, tipo de crime, AIS, natureza, perfil da vítima, dia da semana, tipo de entorpecente e período (`data_fato`).
 
-> [!WARNING]
-> **Estado atual da API:** a rota `GET /crimes/cvli` lê o arquivo local `database/dados.json` (ignorado pelo Git; pasta configurável por `DATABASE_PATH`), e **nenhum módulo do pipeline atual gera esse arquivo** — a ingestão grava no Supabase. Sem o arquivo, a rota responde `404`.
-> `TODO`: migrar `app/services/crime_service.py` para consultar o Supabase.
+> [!NOTE]
+> A API lê **diretamente do Supabase** (`SUPABASE_URL` e `SUPABASE_KEY` no `.env`). O antigo arquivo local `database/dados.json` não é mais usado. Se não houver registros para a consulta, a rota responde `404`.
 
 ---
 
@@ -108,7 +107,7 @@ api_sspds/
 │   ├── routers/              #   rotas (crimes.py)
 │   ├── schemas/              #   modelos Pydantic de resposta
 │   ├── services/             #   regras de acesso aos dados (crime_service.py)
-│   ├── config.py
+│   ├── config.py             #   get_variavel_ambiente (leitura do .env da API)
 │   ├── exception.py          #   handlers de exceção
 │   ├── main.py               #   instância FastAPI, /, /health
 │   └── dockerfile
@@ -150,7 +149,7 @@ api_sspds/
 | Caminho | Responsabilidade |
 | :-- | :-- |
 | `logging_system/` | Configuração de logs compartilhada por ingestão e banco. `configure_logging()` lê `LOG_LEVEL` e define o formato `data \| nível \| logger \| mensagem`. Também define a exceção de variável de ambiente ausente. |
-| `tests/` | Suíte `pytest`. `test_ingestion.py` cobre crawler, helpers, normalizadores, classificador e validador (com mocks; sem rede). `test_crimes.py` testa a rota da API com `TestClient`. `test_database.py` (marcador `database`) testa a camada de acesso ao Supabase em uma instância real. `conftest.py` reúne os fixtures (HTML sintético, DataFrames de exemplo, cliente Supabase). |
+| `tests/` | Suíte `pytest`. `test_ingestion.py` cobre crawler, helpers, normalizadores, classificador e validador (com mocks; sem rede). `test_crimes.py` testa a rota da API com `TestClient` (consulta o Supabase real). `test_database.py` (marcador `database`) testa a camada de acesso ao Supabase em uma instância real. `conftest.py` reúne os fixtures (HTML sintético, DataFrames de exemplo, cliente Supabase). |
 | `certs/` | Certificado intermediário **Amazon RSA 2048 M01** (`.crt` e `.der`). O servidor do portal (`www.ce.gov.br`) não envia esse intermediário na cadeia, e o `requests` em Linux/Docker não o obtém sozinho (erro `CERTIFICATE_VERIFY_FAILED`). O `.crt` é instalado na imagem da ingestão e `REQUESTS_CA_BUNDLE` aponta para o conjunto de certificados do sistema, sem usar `verify=False`. Detalhes em [`docs/ingestion.md`](docs/ingestion.md#55-erro-de-certificado-ssl-certificate_verify_failed). |
 | `app/dockerfile` | Imagem da API: `python:3.13.4`, instala `requirements.txt`, copia `app/`, `database/` e `logging_system/` e inicia `uvicorn app.main:app` na porta 8000. |
 | `ingestion/dockerfile` | Imagem da ingestão: `python:3.13.4`, instala `requirements.txt`, instala o certificado CA de `certs/`, copia `ingestion/`, `database/` e `logging_system/` e executa `python -m ingestion.pipeline`. |
@@ -162,8 +161,6 @@ api_sspds/
 | `docs/diario-de-bordo.md`, `docs/marco-1.md`, `docs/plano-de-acao.md` | Registros do processo de desenvolvimento: diário semanal, entrega do Marco 1 e plano de ação do projeto. |
 | `docs/evidencias/`, `docs/evidencias.csv` | Evidências de divulgação, testes com público externo e licença dos dados (PDFs) e o índice delas em CSV. |
 | `LICENSE` | Licença MIT do código. |
-
-> `TODO`: `app/config.py` importa `from exception import ...` (sem o prefixo `app.`) e não é usado por `app/main.py`; revisar se o módulo ainda é necessário.
 
 ### 4.1 Camada de acesso ao banco (`database/`)
 
@@ -181,7 +178,7 @@ from database.repository import consultar_registros
 
 ocorrencias = consultar_registros(
     tabela="ocorrencias_crimes",
-    filtros={"tipo_crime": "cvli", "municipio": "Fortaleza"},
+    filtros={"tipo_crime": "CRIMES VIOLENTOS LETAIS E INTENCIONAIS - CVLI", "municipio": "Fortaleza"},
     coluna_data="data_fato",
     data_inicio="2026-08-01",
     data_fim="2026-08-31",
@@ -224,10 +221,9 @@ cp .env.example .env        # Windows (PowerShell): Copy-Item .env.example .env
 | `CHUNK_SIZE` | Tamanho, em bytes, dos blocos de download. Aceita expressão aritmética (avaliada com `eval`). | `1024 * 64` | Sim (ingestão) |
 | `HASH_CHUNK_SIZE` | Tamanho, em bytes, dos blocos de leitura no cálculo do SHA-256. Aceita expressão aritmética. | `1024 * 1024` | Sim (ingestão) |
 | `INSERT_CHUNK_SIZE` | Quantidade de registros por lote na inserção em `ocorrencias_crimes`. | `300` | Sim (ingestão) |
-| `LOG_LEVEL` | Nível de log (`DEBUG`, `INFO`, `WARNING`, `ERROR`…). Valor inválido cai para `INFO`; a variável ausente gera erro. | `INFO` | Sim (ingestão, banco e testes) |
-| `SUPABASE_URL` | URL do projeto Supabase. | `https://<projeto>.supabase.co` | Sim (ingestão e testes de banco) |
-| `SUPABASE_KEY` | Chave de acesso ao Supabase (a camada de acesso foi desenhada para a `service_role`; veja [`docs/database.md`](docs/database.md)). **Nunca versione.** | — | Sim (ingestão e testes de banco) |
-| `DATABASE_PATH` | Pasta onde a API procura `dados.json`. Não consta no `.env.example`. | `database` (padrão do código) | Não |
+| `LOG_LEVEL` | Nível de log (`DEBUG`, `INFO`, `WARNING`, `ERROR`…). Valor inválido cai para `INFO`; a variável ausente gera erro. | `INFO` | Sim (API, ingestão, banco e testes) |
+| `SUPABASE_URL` | URL do projeto Supabase. | `https://<projeto>.supabase.co` | Sim (API, ingestão e testes de banco) |
+| `SUPABASE_KEY` | Chave de acesso ao Supabase (a camada de acesso foi desenhada para a `service_role`; veja [`docs/database.md`](docs/database.md)). **Nunca versione.** | — | Sim (API, ingestão e testes de banco) |
 
 > [!CAUTION]
 > `.env` contém credenciais e já está no `.gitignore`. Não o publique.
@@ -294,9 +290,11 @@ uvicorn app.main:app --reload --port 8000
 | `http://localhost:8000/health` | `{"status": "ok"}` |
 | `http://localhost:8000/docs` | Documentação interativa (Swagger UI). |
 | `http://localhost:8000/redoc` | Uma opção alternativa de visualização estruturada da documentação, excelente para leitura detalhada dos contratos de resposta e schemas de dados. |
-| `http://localhost:8000/crimes/cvli?limit=5` | Primeiras 5 ocorrências de CVLI (veja o aviso da [seção 2](#2-arquitetura-e-fluxo-de-dados) sobre `dados.json`). |
+| `http://localhost:8000/crimes/cvli?limit=5` | Primeiras 5 ocorrências de CVLI. |
+| `http://localhost:8000/crimes/?municipio=Fortaleza&tipo_crime=FURTO&data_inicio=2025-01-01&data_fim=2025-03-31&limit=10` | Consulta geral com filtros combinados (município, tipo de crime e período). |
+| `http://localhost:8000/crimes/vitimas`, `/crimes/preconceito`, `/crimes/operacionais` | Demais rotas específicas (veja [`docs/api.md`](docs/api.md)). |
 
-Detalhes de parâmetros, schemas e códigos de resposta (`200`, `404`, `422`) em [`docs/api.md`](docs/api.md).
+Detalhes de parâmetros, schemas e códigos de resposta (`200`, `404`, `422`, `500`, `503`) em [`docs/api.md`](docs/api.md).
 
 ### 6.5 Executar os testes
 
@@ -316,7 +314,7 @@ python -m pytest -m "not database"
 | Arquivo | Pré-requisito |
 | :-- | :-- |
 | `tests/test_ingestion.py` | `.env` preenchido (as configurações são lidas no import). |
-| `tests/test_crimes.py` | `database/dados.json` existente (senão a rota responde `404` e os testes de sucesso falham). |
+| `tests/test_crimes.py` | `SUPABASE_URL` e `SUPABASE_KEY` válidos e ao menos um registro de CVLI em `ocorrencias_crimes` (senão a rota responde `404` e os testes de sucesso falham). |
 | `tests/test_database.py` | `SUPABASE_URL` e `SUPABASE_KEY` válidos; executam leituras **e escritas** em tabelas como `historico_ingestoes` e `api_request_logs` — use uma instância de desenvolvimento. |
 
 ---

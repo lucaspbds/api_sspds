@@ -5,7 +5,9 @@ from typing import Any, Dict, List, Optional, Sequence
 from database.exceptions import (
     ErroConexaoBanco,
     ErroOperacaoBanco,
-    VariavelAmbienteNaoEncontrada,
+)
+from database.exceptions import (
+    VariavelAmbienteNaoEncontrada as VariavelAmbienteNaoEncontradaBanco,
 )
 from database.repository import consultar_registros, criar_cliente_supabase
 
@@ -128,7 +130,7 @@ def _consultar(
                 data_inicio=data_inicio,
                 data_fim=data_fim,
             )
-    except (ErroOperacaoBanco, ErroConexaoBanco, VariavelAmbienteNaoEncontrada):
+    except (ErroOperacaoBanco, ErroConexaoBanco, VariavelAmbienteNaoEncontradaBanco):
         # Já são exceções de domínio com handler próprio (500/503); não reembrulhar.
         raise
     except Exception as e:

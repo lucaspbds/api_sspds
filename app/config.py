@@ -1,22 +1,25 @@
 from dotenv import load_dotenv 
-from exception import VariavelAmbienteNaoEncontrada
+from app.exception import VariavelAmbienteNaoEncontrada
 import os
 
 load_dotenv()
 
-def get_variavel_ambiente(nome_variavel:str):
+def get_variavel_ambiente(nome_variavel: str) -> str:
     """
-    Função responsável por capturar a variável de ambiente do arquivo .env.
-    Args:
-        string nome_variavel: nome dado a variável de ambiente.
-        
-    Return:
-        variavel_ambiente : valor da variável de ambiente contida na .env.
+    Recupera o valor de uma variável de ambiente obrigatória (arquivo `.env` ou ambiente).
 
-    Exception:
-        Caso a variável não exista, vai retornar um erro indicando que não encontrou a variável de ambiente.
+    A API tem a sua própria leitura de configuração, independente do pacote `database/`.
+
+    Args:
+        nome_variavel (str): Nome da variável de ambiente a ser buscada.
+
+    Returns:
+        str: Valor da variável, sem espaços extras nas extremidades.
+
+    Raises:
+        VariavelAmbienteNaoEncontrada: Se a variável não existir ou estiver vazia.
     """
-    variavel_ambiente = os.getenv(nome_variavel)
-    if variavel_ambiente:
-        return variavel_ambiente
-    raise VariavelAmbienteNaoEncontrada(nome_variavel)
+    valor = os.getenv(nome_variavel)
+    if not valor or not valor.strip():
+        raise VariavelAmbienteNaoEncontrada(nome_variavel)
+    return valor.strip()

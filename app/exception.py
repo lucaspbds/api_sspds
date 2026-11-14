@@ -1,4 +1,5 @@
 import logging
+from typing import Union
 
 from fastapi import FastAPI, Request, status
 from fastapi.encoders import jsonable_encoder
@@ -16,6 +17,14 @@ logger = logging.getLogger("app.exception")
 
 # ---- Exceções customizadas ----
 
+class VariavelAmbienteNaoEncontrada(Exception):
+    """Lançada por `app.config` quando uma variável de ambiente obrigatória não está definida."""
+
+    def __init__(self, nome_variavel: str):
+        self.nome_variavel = nome_variavel
+        super().__init__(
+            f"A variável de ambiente obrigatória '{nome_variavel}' não foi encontrada."
+        )
 
 class RecursoNaoEncontrado(Exception):
     """Exceção customizada para quando um recurso solicitado não existe no banco."""

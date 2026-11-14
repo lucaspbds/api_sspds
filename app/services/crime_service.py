@@ -2,13 +2,21 @@ import logging
 from datetime import date
 from typing import Any, Dict, List, Optional, Sequence
 
-from database.exceptions import ErroOperacaoBanco
-from database.repository import criar_cliente_supabase, consultar_registro
+from database.exceptions import (
+    ErroConexaoBanco,
+    ErroOperacaoBanco,
+    VariavelAmbienteNaoEncontrada,
+)
+from database.repository import consultar_registros, criar_cliente_supabase
 
 logger = logging.getLogger("app.services.crime_service")
 
 TABELA_OCORRENCIAS = "ocorrencias_crimes"
+COLUNA_DATA = "data_fato"
 
+# Valores **exatos** da coluna `tipo_crime` (os mesmos gerados por
+# `ingestion/classifier.py`). Para listar os valores atuais no banco:
+#     SELECT DISTINCT tipo_crime FROM ocorrencias_crimes ORDER BY tipo_crime;
 TIPO_CVLI = "CRIMES VIOLENTOS LETAIS E INTENCIONAIS - CVLI"
 TIPO_PRECONCEITO = "HOMOFOBIA E TRANSFOBIA"
 TIPO_FURTO = "FURTO"
@@ -21,8 +29,13 @@ TIPO_INDIGENAS = "INDÍGENAS VÍTIMAS DE CRIMES"
 TIPOS_OPERACIONAIS = (TIPO_FURTO, TIPO_CVP)
 TIPOS_COM_VITIMA = (TIPO_MARIA_DA_PENHA, TIPO_CRIMES_SEXUAIS, TIPO_INDIGENAS)
 
-def _normalizar_municipio(valor: Optional[str]) -> Optional[str]:
-    """Aplica o mesmo padrão da ingestão (espaços colapsados + Title Case)."""
+
+def _normalizar_texto(valor: Optional[str]) -> Optional[str]:
+    """
+    Aplica o mesmo padrão da ingestão (`normalizar_texto`): espaços colapsados + Title Case.
+    Usado nos filtros de texto livre (município, AIS, natureza, gênero etc.), que são
+    gravados nesse formato. Retorna `None` para valores vazios.
+    """
     if not valor:
         return None
     texto = " ".join(valor.split()).title()
@@ -37,21 +50,50 @@ def _normalizar_tipo(valor: Optional[str]) -> Optional[str]:
     return texto or None
 
 
+def _consultar_varios_tipos(
+    filtros: Dict[str, Any],
+    tipos: Sequence[str],
+    data_inicio: Optional[date],
+    data_fim: Optional[date],
+    limite: Optional[int],
+) -> List[Dict[str, Any]]:
+    """
+    Consulta com filtro `IN` em `tipo_crime`. O `consultar_registros` do repository só
+    aceita igualdade, então a query é montada diretamente com o cliente Supabase.
+    """
+    cliente = criar_cliente_supabase()
+    query = cliente.table(TABELA_OCORRENCIAS).select("*")
+
+    for coluna, valor in filtros.items():
+        query = query.eq(coluna, valor)
+    query = query.in_("tipo_crime", list(tipos))
+    if data_inicio:
+        query = query.gte(COLUNA_DATA, data_inicio.isoformat())
+    if data_fim:
+        query = query.lte(COLUNA_DATA, data_fim.isoformat())
+    if limite is not None:
+        query = query.limit(limite)
+
+    return query.execute().data or []
+
+
 def _consultar(
     *,
     filtros: Optional[Dict[str, Any]] = None,
     tipos: Optional[Sequence[str]] = None,
-    municipio: Optional[str] = None,
     data_inicio: Optional[date] = None,
     data_fim: Optional[date] = None,
     limite: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """
-    Executa a consulta em `ocorrencias_crimes` utilizando o repositório centralizado.
+    Executa a consulta em `ocorrencias_crimes`.
+
+    Com zero ou um tipo, usa `database.repository.consultar_registros` (igualdade +
+    período + limite). Com vários tipos, usa um filtro `IN` (`_consultar_varios_tipos`).
 
     Args:
-        tipos: Um ou mais valores exatos de `tipo_crime` (filtro de igualdade ou lista).
-        municipio: Município (igualdade exata, já normalizado).
+        filtros: Pares {coluna: valor} comparados por igualdade (já normalizados).
+        tipos: Um ou mais valores exatos de `tipo_crime`.
         data_inicio: Limite inferior (inclusive) de `data_fato`.
         data_fim: Limite superior (inclusive) de `data_fato`.
         limite: Número máximo de registros (deve ser maior que zero).
@@ -61,7 +103,7 @@ def _consultar(
 
     Raises:
         ValueError: Se `limite` for <= 0 ou `data_inicio` for posterior a `data_fim`.
-        VariavelAmbienteNaoEncontrada / ErroConexaoBanco: Falha ao conectar.
+        VariavelAmbienteNaoEncontrada / ErroConexaoBanco: Falha ao conectar ao banco.
         ErroOperacaoBanco: Falha ao executar a consulta no Supabase.
     """
     if limite is not None and limite <= 0:
@@ -69,61 +111,36 @@ def _consultar(
     if data_inicio and data_fim and data_inicio > data_fim:
         raise ValueError("data_inicio não pode ser posterior a data_fim.")
 
-    # Montamos o dicionário de filtros dinâmicos de igualdade
     filtros = dict(filtros or {})
-    if municipio:
-        filtros["municipio"] = municipio
-    if tipos:
-        # Se houver apenas um tipo, podemos usar direto no filtro; 
-        # se forem vários, o repositório padrão por igualdade simples lida com .eq. 
-        # Caso queira suporte a IN, podemos tratar, mas mantendo a compatibilidade atual:
-        if len(tipos) == 1:
-            filtros["tipo_crime"] = tipos[0]
+    tipos = list(tipos or [])
+    if len(tipos) == 1:
+        filtros["tipo_crime"] = tipos[0]
 
     try:
-        # Se houver múltiplos tipos (filtro IN), tratamos a query ou passamos ao repositório.
-        # Como a função consultar_registros padrão lida com .eq(), se tivermos múltiplos tipos,
-        # podemos chamar diretamente passando os parâmetros atualizados do repositório:
-        if tipos and len(tipos) > 1:
-            # Caso especial para múltiplos tipos usando o cliente diretamente ou expandindo o repo se necessário,
-            # mas mantendo a chamada limpa via consultar_registros se aplicável:
-            cliente = criar_cliente_supabase()
-            query = cliente.table(TABELA_OCORRENCIAS).select("*")
-            if municipio:
-                query = query.eq("municipio", municipio)
-            query = query.in_("tipo_crime", list(tipos))
-            if data_inicio:
-                query = query.gte("data_fato", data_inicio.isoformat())
-            if data_fim:
-                query = query.lte("data_fato", data_fim.isoformat())
-            query = query.order("id")
-            if limite is not None:
-                query = query.limit(limite)
-            resposta = query.execute()
-            dados = resposta.data or []
+        if len(tipos) > 1:
+            dados = _consultar_varios_tipos(filtros, tipos, data_inicio, data_fim, limite)
         else:
-            # Consulta padrão com suporte a datas
             dados = consultar_registros(
                 tabela=TABELA_OCORRENCIAS,
-                filtros=filtros if filtros else None,
+                filtros=filtros or None,
                 limite=limite,
-                coluna_data="data_fato" if (data_inicio or data_fim) else None,
+                coluna_data=COLUNA_DATA if (data_inicio or data_fim) else None,
                 data_inicio=data_inicio,
                 data_fim=data_fim,
             )
-
-        logger.info(
-            "Consulta concluída tabela=%s registros_retornados=%s",
-            TABELA_OCORRENCIAS,
-            len(dados),
-        )
-        return dados
-
+    except (ErroOperacaoBanco, ErroConexaoBanco, VariavelAmbienteNaoEncontrada):
+        # Já são exceções de domínio com handler próprio (500/503); não reembrulhar.
+        raise
     except Exception as e:
         logger.error("Erro ao consultar %s: %s", TABELA_OCORRENCIAS, type(e).__name__)
-        if not isinstance(e, ErroOperacaoBanco):
-            raise ErroOperacaoBanco("consulta", TABELA_OCORRENCIAS) from e
-        raise
+        raise ErroOperacaoBanco("consulta", TABELA_OCORRENCIAS) from e
+
+    logger.info(
+        "Consulta concluída tabela=%s registros_retornados=%s",
+        TABELA_OCORRENCIAS,
+        len(dados),
+    )
+    return dados
 
 
 class CrimeService:
@@ -144,37 +161,28 @@ class CrimeService:
         limit: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """
-        Consulta geral com filtros dinâmicos cobrindo as principais colunas do CrimeGeralResponse.
+        Consulta geral com filtros dinâmicos (todos opcionais e combináveis).
+
+        - `tipo_crime`: valor exato da coluna (maiúsculas e espaços extras normalizados).
+        - Demais filtros de texto: igualdade exata, sem diferenciar maiúsculas/minúsculas
+          (a entrada é normalizada para o padrão gravado pela ingestão).
+        - `data_inicio` / `data_fim`: período inclusivo sobre `data_fato`.
         """
-        # 1. Normalizações necessárias
-        tipo_normalizado = _normalizar_tipo(tipo_crime)
-        mun_normalizado = _normalizar_municipio(municipio)
+        candidatos: Dict[str, Optional[str]] = {
+            "municipio": _normalizar_texto(municipio),
+            "tipo_crime": _normalizar_tipo(tipo_crime),
+            "ais": _normalizar_texto(ais),
+            "natureza": _normalizar_texto(natureza),
+            "meio_empregado": _normalizar_texto(meio_empregado),
+            "vitima_genero": _normalizar_texto(vitima_genero),
+            "vitima_raca": _normalizar_texto(vitima_raca),
+            "dia_semana": _normalizar_texto(dia_semana),
+            "tipo_entorpecente": _normalizar_texto(tipo_entorpecente),
+        }
+        filtros = {coluna: valor for coluna, valor in candidatos.items() if valor}
 
-        # 2. Monta o dicionário dinâmico com todos os filtros de igualdade (.eq)
-        filtros_extras: Dict[str, Any] = {}
-        
-        if mun_normalizado:
-            filtros_extras["municipio"] = mun_normalizado
-        if tipo_normalizado:
-            filtros_extras["tipo_crime"] = tipo_normalizado
-        if ais:
-            filtros_extras["ais"] = ais
-        if natureza:
-            filtros_extras["natureza"] = natureza
-        if meio_empregado:
-            filtros_extras["meio_empregado"] = meio_empregado
-        if vitima_genero:
-            filtros_extras["vitima_genero"] = vitima_genero
-        if vitima_raca:
-            filtros_extras["vitima_raca"] = vitima_raca
-        if dia_semana:
-            filtros_extras["dia_semana"] = dia_semana
-        if tipo_entorpecente:
-            filtros_extras["tipo_entorpecente"] = tipo_entorpecente
-
-        # 3. Chama o _consultar passando o dicionário completo de filtros
         return _consultar(
-            filtros=filtros_extras,
+            filtros=filtros,
             data_inicio=data_inicio,
             data_fim=data_fim,
             limite=limit,

@@ -93,7 +93,8 @@ LimitParam = Annotated[
     summary="Listar e filtrar ocorrências de crimes",
     description=(
         "Retorna uma lista unificada de crimes cadastrados, permitindo filtrar por município, "
-        "tipo de crime, período de datas (`data_fato`, inclusivo) e limitar a quantidade de registros."
+        "tipo de crime, AIS, natureza, meio empregado, perfil da vítima (gênero e raça), dia da semana, "
+        "tipo de entorpecente, período de datas (`data_fato`, inclusivo) e limitar a quantidade de registros."
     ),
     responses=_respostas("Nenhum crime encontrado com os filtros fornecidos.", _EXEMPLO_422_DATA),
 )

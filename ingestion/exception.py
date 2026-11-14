@@ -57,5 +57,17 @@ class FileValidationError(IngestionError):
 class DatabaseLookupError(IngestionError):
     """Falha ao consultar se um hash já existe no banco de dados."""
 
+
+class CaminhoTemporarioInseguro(IngestionError):
+    """TEMP_PATH aponta para um local que não pode ser apagado com segurança."""
+
+
+class PlanilhaSemRegistros(IngestionError):
+    """A planilha foi lida, mas não gerou nenhuma ocorrência normalizada."""
+
+    def __init__(self, nome_arquivo):
+        super().__init__(f"A planilha não contém registros a carregar: {nome_arquivo}")
+
+
 class TipoOcorrenciaNaoIdentificado(ValueError):
     """O nome do arquivo não corresponde a uma categoria conhecida."""

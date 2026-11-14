@@ -3,7 +3,7 @@ from datetime import date
 from typing import Any, Dict, List, Optional, Sequence
 
 from database.exceptions import ErroOperacaoBanco
-from database.repository import criar_cliente_supabase
+from database.repository import criar_cliente_supabase, consultar_registro
 
 logger = logging.getLogger("app.services.crime_service")
 
@@ -70,7 +70,7 @@ def _consultar(
         raise ValueError("data_inicio não pode ser posterior a data_fim.")
 
     # Montamos o dicionário de filtros dinâmicos de igualdade
-    filtros: Dict[str, Any] = {}
+    filtros = dict(filtros or {})
     if municipio:
         filtros["municipio"] = municipio
     if tipos:

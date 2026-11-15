@@ -5,13 +5,13 @@ from typing import TypedDict
 
 from .exception import DatabaseLookupError, FileValidationError
 from .config import get_variavel_ambiente
-from .helpers import recebeInteiro
+from .helpers import avaliar_expressao_inteira
 from database.repository import consultar_registros
 from logging_system.logging_config import configure_logging
 
 configure_logging()
 logger = logging.getLogger(__name__)
-HASH_CHUNK_SIZE = recebeInteiro(eval(get_variavel_ambiente("HASH_CHUNK_SIZE")))
+HASH_CHUNK_SIZE = avaliar_expressao_inteira(get_variavel_ambiente("HASH_CHUNK_SIZE"))
 TEMP_PATH = get_variavel_ambiente("TEMP_PATH")
 
 
@@ -24,7 +24,7 @@ class ValidatedFile(TypedDict):
     is_new: bool
     size_bytes: int
     name_exists: bool
-    id_registro: int
+    id_registro: int | None
 
 
 def calculate_sha256(file_path: str | Path) -> str:
@@ -53,7 +53,12 @@ def calculate_sha256(file_path: str | Path) -> str:
 
 
 def check_hash_in_database(file_hash: str) -> bool:
-    """Retorna True se o hash já estiver cadastrado no banco.
+    """Retorna True se o hash já estiver **totalmente ingerido** no banco.
+
+    Um registro só conta se ``periodo_dados`` estiver preenchido. O pipeline
+    grava esse campo como último passo da carga; um registro com
+    ``periodo_dados`` nulo é uma carga interrompida (ex.: processo morto no
+    meio) e o arquivo deve ser reprocessado.
 
     Raises:
         DatabaseLookupError: se o hash for vazio ou a consulta falhar.
@@ -72,7 +77,7 @@ def check_hash_in_database(file_hash: str) -> bool:
         logger.exception("Falha ao consultar o hash no banco de dados")
         raise DatabaseLookupError("Falha ao consultar o hash no banco de dados.") from exc
 
-    return bool(registros)
+    return any(registro.get("periodo_dados") for registro in registros)
 
 
 def check_filename_in_database(file_name: str) -> list:

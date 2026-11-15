@@ -6,6 +6,9 @@ from datetime import date, time
 import pandas as pd
 from pathlib import Path
 
+import ingestion.pipeline as modulo_pipeline
+import ingestion.validator as modulo_validator
+from ingestion.pipeline import ResumoIngestao
 import ingestion.crawler as modulo_crawler
 from ingestion.crawler import (
     crawler,
@@ -14,10 +17,12 @@ from ingestion.crawler import (
     extrair_links_atuais,
     extrair_links_historicos,
 )
-from ingestion.exception import (EstruturaCSSDoSiteAlterado, VariavelAmbienteNaoEncontrada, 
+from ingestion.exception import (DownloadHTTPError, EstruturaCSSDoSiteAlterado, VariavelAmbienteNaoEncontrada, 
                                  ValorInteiroInvalido, ColunasAusentesNaPlanilha, DatabaseLookupError, 
-                                 FileValidationError, tipoOcorrenciaNaoEncontrado)
+                                 FileValidationError, tipoOcorrenciaNaoEncontrado,CaminhoTemporarioInseguro, 
+                                 ValorInteiroInvalido)
 from ingestion.helpers import recebeInteiro
+from ingestion.helpers import avaliar_expressao_inteira
 from ingestion.normalizer import (
     normalizar_texto,
     normalizar_data,
@@ -33,6 +38,13 @@ from ingestion.normalizer import (
     normalizar_entorpecentes,
     normalizar_homofobiaETransfobia,
     normalizer
+)
+
+import ingestion.cleanup as modulo_cleanup
+from ingestion.cleanup import (
+    limpar_pasta_temporaria,
+    remover_arquivo_temporario,
+    validar_pasta_temporaria,
 )
 import ingestion.normalizer as modulo_normalizer
 import ingestion.validator as modulo_validator
@@ -140,6 +152,47 @@ def test_funcao_recebeInteiro_devolve_um_numero_inteiro(valor):
     assert type(numero_inteiro) == int
 
 @pytest.mark.parametrize(
+    ("expressao", "esperado"),
+    [
+        ("300", 300),
+        ("1024 * 64", 65536),
+        (" 1024*1024 ", 1048576),
+        ("2 + 3 * 4", 14),
+        ("(1 + 2) * 3", 9),
+        ("10 // 3", 3),
+        ("-5", -5),
+    ],
+)
+def test_avaliar_expressao_inteira_aceita_aritmetica_simples(expressao, esperado):
+    assert avaliar_expressao_inteira(expressao) == esperado
+
+
+@pytest.mark.parametrize(
+    "expressao",
+    [
+        "__import__('os').system('echo pwn')",
+        "open('/etc/passwd')",
+        "2 ** 10",
+        "1 / 2",
+        "1.5",
+        "True",
+        "abc",
+        "(1 +",
+        "10 // 0",
+        "99999999999999",
+        "1000000 * 1000000 * 1000000",
+        "",
+        "   ",
+        None,
+        123,
+    ],
+)
+def test_avaliar_expressao_inteira_rejeita_o_que_nao_e_aritmetica_simples(expressao):
+    with pytest.raises(ValorInteiroInvalido):
+        avaliar_expressao_inteira(expressao)
+
+#NORMALIZER
+@pytest.mark.parametrize(
     ("valor", "esperado"),
     [
         ("  FORTALEZA  ", "Fortaleza"),
@@ -150,8 +203,6 @@ def test_funcao_recebeInteiro_devolve_um_numero_inteiro(valor):
         (float("nan"), None),
     ],
 )
-
-#NORMALIZER
 def test_normalizar_texto(valor, esperado):
     assert normalizar_texto(valor) == esperado
 
@@ -392,6 +443,26 @@ def test_classificar_arquivo_enriquece_copia_sem_alterar_metadado_original():
 
 #VALIDATOR
 
+@pytest.mark.parametrize(
+    ("registros", "esperado"),
+    [
+        ([], False),                                          # hash desconhecido
+        ([{"id": 1, "periodo_dados": "2024"}], True),         # carga completa
+        ([{"id": 1, "periodo_dados": "2019 - 2024"}], True),
+        ([{"id": 1, "periodo_dados": None}], False),          # carga interrompida
+        ([{"id": 1, "periodo_dados": ""}], False),
+        ([{"id": 1}], False),                                 # sem o campo: não confia
+    ],
+)
+def test_hash_so_conta_como_ingerido_com_periodo_preenchido(monkeypatch, registros, esperado):
+    consulta = Mock(return_value=registros)
+    monkeypatch.setattr(modulo_validator, "consultar_registros", consulta)
+
+    assert modulo_validator.check_hash_in_database("h") is esperado
+    consulta.assert_called_once_with(
+        tabela="informacoes_arquivo", filtros={"hash_sha256": "h"}
+    )
+
 def test_calculate_sha256_calcula_hash_do_arquivo(tmp_path, monkeypatch):
     arquivo = tmp_path / "dados.xlsx"
     conteudo = b"conteudo de teste para hash"
@@ -404,7 +475,7 @@ def test_calculate_sha256_calcula_hash_do_arquivo(tmp_path, monkeypatch):
     assert modulo_validator.calculate_sha256(arquivo) == esperado
 
 def test_check_hash_in_database_retorna_true_quando_encontra_registro(monkeypatch):
-    consulta = Mock(return_value=[{"id": 1}])
+    consulta = Mock(return_value=[{"id": 1, "periodo_dados": "2024"}])
     monkeypatch.setattr(modulo_validator, "consultar_registros", consulta)
 
     assert modulo_validator.check_hash_in_database("hash-existente") is True
@@ -473,10 +544,248 @@ def test_validate_xlsx_file_reconhece_hash_e_nome_existentes(tmp_path, monkeypat
     assert resultado["name_exists"] is True
     assert resultado["id_registro"] == 17
 
+#CLEANUP
+def test_limpar_remove_subpasta_do_diretorio_de_trabalho(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    pasta = tmp_path / "temp"
+    pasta.mkdir()
+    (pasta / "a.xlsx").write_bytes(b"x")
+
+    limpar_pasta_temporaria("temp")
+
+    assert not pasta.exists()
+
+def test_validar_aceita_subpasta_valida(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    assert validar_pasta_temporaria("ingestion/tempfiles") == (tmp_path / "ingestion" / "tempfiles").resolve()
+
+def test_remover_arquivo_temporario_apaga_o_arquivo(tmp_path):
+    arquivo = tmp_path / "a.xlsx"
+    arquivo.write_bytes(b"x")
+    remover_arquivo_temporario(arquivo)
+    assert not arquivo.exists()
+
+#PIPELINE
+def test_arquivo_novo_e_carregado_e_concluido(ambiente):
+    URL_CVLI = "https://dados.test/CVLI_2024.xlsx"
+    STATUS_INGESTAO_SUCESSO = "SUCESSO"
+
+    ambiente.urls = [URL_CVLI]
+
+    resumo = modulo_pipeline.pipeline()
+
+    inserido = ambiente.dados("arquivo_inserido")[0]
+    assert "status" not in inserido  # nenhuma coluna nova é necessária
+    assert inserido["tipo_crime"] == "CRIMES VIOLENTOS LETAIS E INTENCIONAIS - CVLI"
+    assert inserido["hash_sha256"] == "hash-CVLI_2024.xlsx"
+    assert inserido["periodo_dados"] is None
+    assert ambiente.dados("ocorrencias_inseridas") == [{"qtd": 2}]
+
+    # periodo_dados é o marcador de "carga completa": só no passo final.
+    concluido = ambiente.dados("arquivo_atualizado")[-1]
+    assert concluido["id"] == inserido["id"]
+    assert concluido["periodo_dados"] == "2024"
+    assert ambiente.posicao("ocorrencias_inseridas") < ambiente.posicao("arquivo_atualizado")
+
+    assert ambiente.dados("arquivo_deletado") == []
+    assert (resumo.carregados, resumo.ignorados, resumo.falhas) == (1, 0, 0)
+    assert resumo.status == STATUS_INGESTAO_SUCESSO
+
+def test_periodo_cobre_varios_anos(ambiente):
+    URL_CVLI = "https://dados.test/CVLI_2024.xlsx"
+    ambiente.urls = [URL_CVLI]
+    ambiente.registros = [{"data_fato": "2019-12-31"}, {"data_fato": "2024-01-01"}]
+
+    modulo_pipeline.pipeline()
+
+    assert ambiente.dados("arquivo_atualizado")[-1]["periodo_dados"] == "2019 - 2024"
+
+def test_arquivo_temporario_e_pasta_sao_removidos(ambiente):
+    URL_CVLI = "https://dados.test/CVLI_2024.xlsx"
+    ambiente.urls = [URL_CVLI]
+
+    modulo_pipeline.pipeline()
+
+    assert ambiente.dados("arquivo_removido") == [str(Path("tmp") / "CVLI_2024.xlsx")]
+    assert ambiente.dados("limpeza") == [None]
+
+def test_historico_e_aberto_antes_do_crawler_e_fechado_com_contadores(ambiente):
+    URL_CVLI = "https://dados.test/CVLI_2024.xlsx"
+    URL_FURTO = "https://dados.test/furtos.xlsx"
+    STATUS_INGESTAO_EM_ANDAMENTO = "EM_ANDAMENTO"
+    STATUS_INGESTAO_SUCESSO = "SUCESSO"
+    ambiente.urls = [URL_CVLI, URL_FURTO]
+    ambiente.validacoes["furtos.xlsx"] = {"is_new": False}
+
+    modulo_pipeline.pipeline()
+
+    assert ambiente.dados("historico_inserido") == [{"status": STATUS_INGESTAO_EM_ANDAMENTO}]
+    assert ambiente.posicao("historico_inserido") < ambiente.posicao("crawler")
+    final = ambiente.dados("historico_atualizado")[-1]
+    assert final["id"] == 99
+    assert final["status"] == STATUS_INGESTAO_SUCESSO
+    assert final["qtd_arquivos_encontrados"] == 2
+    assert final["qtd_arquivos_processados"] == 1  # o ignorado não conta como processado
+    assert final["qtd_arquivos_falhas"] == 0
+    assert final["mensagem_erro"] is None
+
+def test_resumo_sem_erros_nao_gera_mensagem():
+    assert ResumoIngestao().montar_mensagem_erro() is None
+
+
+def test_resumo_limita_a_quantidade_de_erros_na_mensagem():
+    resumo = ResumoIngestao(falhas=30, erros=[f"url{i}: Erro" for i in range(30)])
+
+    mensagem = resumo.montar_mensagem_erro()
+
+    assert "30 arquivo(s) com falha" in mensagem
+    assert "url19" in mensagem and "url20" not in mensagem
+    assert "mais 10 falha(s)" in mensagem
 
 # ---------------------------------------------------------
 # 2. SAD PATH
 # ---------------------------------------------------------
+
+#PIPELINE
+def test_arquivo_ja_ingerido_e_ignorado_sem_tocar_no_banco(ambiente):
+    URL_CVLI = "https://dados.test/CVLI_2024.xlsx"
+    STATUS_INGESTAO_SUCESSO = "SUCESSO"
+    ambiente.urls = [URL_CVLI]
+    ambiente.validacoes["CVLI_2024.xlsx"] = {"is_new": False, "name_exists": True, "id_registro": 5}
+
+    resumo = modulo_pipeline.pipeline()
+
+    assert ambiente.dados("arquivo_inserido") == []
+    assert ambiente.dados("arquivo_deletado") == []
+    assert ambiente.dados("normalizado") == []
+    assert (resumo.carregados, resumo.ignorados, resumo.falhas) == (0, 1, 0)
+    assert resumo.status == STATUS_INGESTAO_SUCESSO
+    assert len(ambiente.dados("arquivo_removido")) == 1
+
+def test_republicacao_apaga_versao_anterior_antes_de_recarregar(ambiente):
+    URL_CVLI = "https://dados.test/CVLI_2024.xlsx"
+    
+    ambiente.urls = [URL_CVLI]
+    ambiente.validacoes["CVLI_2024.xlsx"] = {"is_new": True, "name_exists": True, "id_registro": 7}
+
+    resumo = modulo_pipeline.pipeline()
+
+    assert ambiente.dados("arquivo_deletado") == [{"id": 7}]
+    assert ambiente.posicao("arquivo_deletado") < ambiente.posicao("arquivo_inserido")
+    inserido = ambiente.dados("arquivo_inserido")[0]
+    assert inserido["id"] != 7
+    assert inserido["periodo_dados"] is None
+    assert ambiente.dados("arquivo_atualizado")[-1]["periodo_dados"] == "2024"
+    assert resumo.carregados == 1
+
+def test_planilha_vazia_desfaz_a_carga_sem_queimar_o_hash(ambiente):
+    URL_CVLI = "https://dados.test/CVLI_2024.xlsx"
+    STATUS_INGESTAO_FALHA = "FALHA"
+    ambiente.urls = [URL_CVLI]
+    ambiente.registros = []
+
+    resumo = modulo_pipeline.pipeline()
+
+    assert ambiente.dados("ocorrencias_inseridas") == []
+    assert ambiente.dados("arquivo_atualizado") == []  # periodo_dados nunca foi gravado
+    assert ambiente.dados("arquivo_deletado") == [{"id": 100}]  # registro desfeito
+    assert resumo.falhas == 1
+    assert "PlanilhaSemRegistros" in resumo.erros[0]
+    assert resumo.status == STATUS_INGESTAO_FALHA
+
+
+def test_falha_no_meio_da_carga_desfaz_e_segue_para_o_proximo(ambiente):
+    URL_CVLI = "https://dados.test/CVLI_2024.xlsx"
+    URL_FURTO = "https://dados.test/furtos.xlsx"
+    STATUS_INGESTAO_PARCIAL = "PARCIAL"
+    ambiente.urls = [URL_CVLI, URL_FURTO]
+    ambiente.ocorrencias_que_falham = 1  # só o primeiro arquivo falha
+
+    resumo = modulo_pipeline.pipeline()
+
+    # 1º arquivo (id 100): registro excluído (CASCADE limpa o que foi inserido).
+    assert ambiente.dados("arquivo_deletado") == [{"id": 100}]
+    # 2º arquivo (id 101): carga completa, periodo_dados gravado.
+    atualizacoes = ambiente.dados("arquivo_atualizado")
+    assert [(a["id"], a["periodo_dados"]) for a in atualizacoes] == [(101, "2024")]
+    assert (resumo.carregados, resumo.falhas) == (1, 1)
+    assert resumo.status == STATUS_INGESTAO_PARCIAL
+    historico = ambiente.dados("historico_atualizado")[-1]
+    assert historico["status"] == STATUS_INGESTAO_PARCIAL
+    assert URL_CVLI in historico["mensagem_erro"]
+    assert "RuntimeError" in historico["mensagem_erro"]
+
+
+def test_falha_de_download_nao_impede_os_demais(ambiente):
+    URL_CVLI = "https://dados.test/CVLI_2024.xlsx"
+    URL_FURTO = "https://dados.test/furtos.xlsx"
+    STATUS_INGESTAO_PARCIAL = "PARCIAL"
+    ambiente.urls = [URL_CVLI, URL_FURTO]
+    ambiente.erros_download["CVLI_2024.xlsx"] = DownloadHTTPError("Falha HTTP 503")
+
+    resumo = modulo_pipeline.pipeline()
+
+    assert ambiente.dados("arquivo_inserido")[0]["nome_arquivo"] == "furtos.xlsx"
+    assert (resumo.carregados, resumo.falhas) == (1, 1)
+    assert "DownloadHTTPError" in resumo.erros[0]
+    assert resumo.status == STATUS_INGESTAO_PARCIAL
+
+
+def test_falha_ao_desfazer_nao_mascara_o_erro_original(ambiente):
+    URL_CVLI = "https://dados.test/CVLI_2024.xlsx"
+    STATUS_INGESTAO_FALHA = "FALHA"
+    ambiente.urls = [URL_CVLI]
+    ambiente.registros = []
+    ambiente.falha_ao_desfazer = True
+
+    resumo = modulo_pipeline.pipeline()
+
+    assert resumo.falhas == 1
+    assert "PlanilhaSemRegistros" in resumo.erros[0]
+    assert "banco fora do ar" not in resumo.erros[0]
+    # Sem a exclusão, o registro fica com periodo_dados nulo (carga incompleta).
+    assert ambiente.dados("arquivo_atualizado") == []
+    assert ambiente.dados("historico_atualizado")[-1]["status"] == STATUS_INGESTAO_FALHA
+
+def test_erro_do_crawler_fecha_historico_limpa_e_propaga(ambiente):
+    STATUS_INGESTAO_FALHA = "FALHA"
+    ambiente.erro_crawler = ConnectionError("sem rede")
+
+    with pytest.raises(ConnectionError):
+        modulo_pipeline.pipeline()
+
+    final = ambiente.dados("historico_atualizado")[-1]
+    assert final["status"] == STATUS_INGESTAO_FALHA
+    assert "ConnectionError" in final["mensagem_erro"]
+    assert "sem rede" in final["mensagem_erro"]
+    assert ambiente.dados("limpeza") == [None]
+
+
+def test_pasta_temporaria_insegura_aborta_antes_de_criar_historico(ambiente):
+    ambiente.erro_validar_pasta = CaminhoTemporarioInseguro("TEMP_PATH=/")
+
+    with pytest.raises(CaminhoTemporarioInseguro):
+        modulo_pipeline.pipeline()
+
+    assert ambiente.dados("historico_inserido") == []
+    assert ambiente.dados("crawler") == []
+
+def test_main_retorna_zero_sem_falhas(ambiente):
+    URL_CVLI = "https://dados.test/CVLI_2024.xlsx"
+    ambiente.urls = [URL_CVLI]
+    assert modulo_pipeline.main() == 0
+
+
+def test_main_retorna_um_quando_algum_arquivo_falha(ambiente):
+    URL_CVLI = "https://dados.test/CVLI_2024.xlsx"
+    ambiente.urls = [URL_CVLI]
+    ambiente.registros = []
+    assert modulo_pipeline.main() == 1
+
+
+def test_main_retorna_um_em_erro_fatal(ambiente):
+    ambiente.erro_crawler = ConnectionError("sem rede")
+    assert modulo_pipeline.main() == 1
 
 #HELPERS
 @pytest.mark.parametrize("valor", ["", "abc", None])
@@ -919,3 +1228,52 @@ def test_validate_xlsx_file_propaga_erro_ao_consultar_nome(tmp_path, monkeypatch
 
     with pytest.raises(DatabaseLookupError, match="falha de consulta"):
         modulo_validator.validate_xlsx_file(arquivo)
+
+#CLEANUP
+def test_limpar_pasta_inexistente_nao_gera_erro(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    limpar_pasta_temporaria("nao_existe")
+
+
+def test_limpar_caminho_que_e_arquivo_levanta_not_a_directory(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "arquivo.txt").write_text("x")
+    with pytest.raises(NotADirectoryError):
+        limpar_pasta_temporaria("arquivo.txt")
+
+
+@pytest.mark.parametrize("caminho", [".", "..", "/", "subpasta/.."])
+def test_validar_rejeita_cwd_ancestrais_e_raiz(tmp_path, monkeypatch, caminho):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "subpasta").mkdir()
+    with pytest.raises(CaminhoTemporarioInseguro):
+        validar_pasta_temporaria(caminho)
+
+
+def test_validar_rejeita_pasta_fora_do_diretorio_de_trabalho(tmp_path, monkeypatch):
+    trabalho = tmp_path / "trabalho"
+    fora = tmp_path / "fora"
+    trabalho.mkdir()
+    fora.mkdir()
+    monkeypatch.chdir(trabalho)
+    with pytest.raises(CaminhoTemporarioInseguro):
+        validar_pasta_temporaria(str(fora))
+
+
+def test_limpar_rejeita_e_nao_apaga_a_pasta_do_codigo(monkeypatch):
+    pacote = Path(modulo_cleanup.__file__).resolve().parent
+    monkeypatch.chdir(pacote.parent)
+
+    with pytest.raises(CaminhoTemporarioInseguro):
+        limpar_pasta_temporaria(str(pacote))
+
+    assert (pacote / "cleanup.py").exists()
+
+def test_remover_arquivo_temporario_ignora_arquivo_inexistente(tmp_path):
+    remover_arquivo_temporario(tmp_path / "nao_existe.xlsx")
+
+
+def test_remover_arquivo_temporario_nao_propaga_erro_do_sistema(tmp_path):
+    # Um diretório não pode ser removido com unlink: deve virar apenas aviso.
+    remover_arquivo_temporario(tmp_path)
+    assert tmp_path.exists()

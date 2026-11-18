@@ -198,7 +198,7 @@ def ids_transicao_anual(registros: list[dict[str, Any]]) -> list[int]:
 
 
 def ids_reconciliacao(registros: list[dict[str, Any]]) -> list[int]:
-    """Seleciona versões completas superadas, preservando ambiguidades."""
+    """Seleciona versões completas superadas somente em sequências reconhecidas."""
     completos = [r for r in registros if r.get("periodo_dados") is not None]
     remover: set[int] = set()
     grupos: dict[tuple[str, str], list[dict[str, Any]]] = {}
@@ -206,33 +206,54 @@ def ids_reconciliacao(registros: list[dict[str, Any]]) -> list[int]:
         chave = (registro.get("tipo_crime"), registro.get("serie"))
         grupos.setdefault(chave, []).append(registro)
 
-    for (tipo, serie), grupo in grupos.items():
+    for (_, serie), grupo in grupos.items():
         if len(grupo) <= 1:
             continue
-        periodos = [normalizar_periodo(r.get("periodo_dados")) for r in grupo]
-        if len(set(periodos)) != len(periodos):
-            # Em empate, o registro publicado mais recentemente prevalece.
-            grupo = sorted(
-                grupo,
-                key=lambda r: (r.get("atualizado_em") or r.get("data_coleta") or "", r["id"]),
-                reverse=True,
+        if serie == "corrente":
+            try:
+                ordenados = sorted(
+                    grupo,
+                    key=lambda r: (
+                        int(normalizar_periodo(r.get("periodo_dados"))),
+                        int(r.get("ultimo_mes") or 0),
+                    ),
+                    reverse=True,
+                )
+                pares = [
+                    (int(normalizar_periodo(r.get("periodo_dados"))), int(r.get("ultimo_mes") or 0))
+                    for r in ordenados
+                ]
+            except (TypeError, ValueError):
+                continue
+            # Só elimina se cada versão anterior for exatamente o mês anterior.
+            sequencia_valida = all(
+                proximo_mes(*pares[i + 1]) == pares[i]
+                for i in range(len(pares) - 1)
             )
-            remover.update(r["id"] for r in grupo[1:])
-            continue
-        # Só reconcilia uma sequência reconhecível; não tenta resolver saltos.
-        ordenados = sorted(grupo, key=lambda r: (
-            normalizar_periodo(r.get("periodo_dados")) or ""
-        ), reverse=True)
-        mais_novo = ordenados[0]
-        classificacao = classificar_versao(
-            {
-                "tipo_crime": tipo, "serie": serie,
-                "periodo_dados": mais_novo.get("periodo_dados"),
-                "ultimo_mes": mais_novo.get("ultimo_mes"),
-            },
-            grupo[1:],
-        )
-        if not classificacao["avisos"] and classificacao["ids_substituir"]:
-            remover.update(classificacao["ids_substituir"])
+            if sequencia_valida:
+                remover.update(r["id"] for r in ordenados[1:])
+        else:
+            # Históricos só são concorrentes quando têm o mesmo ano inicial
+            # e avançam em sequência anual; intervalos inesperados são preservados.
+            try:
+                ordenados = sorted(
+                    grupo,
+                    key=lambda r: tuple(
+                        map(int, normalizar_periodo(r.get("periodo_dados")).split("-"))
+                    ),
+                    reverse=True,
+                )
+                intervalos = [
+                    tuple(map(int, normalizar_periodo(r.get("periodo_dados")).split("-")))
+                    for r in ordenados
+                ]
+            except (AttributeError, TypeError, ValueError):
+                continue
+            if all(
+                atual[0] == anterior[0] and atual[1] == anterior[1] + 1
+                for atual, anterior in zip(intervalos, intervalos[1:])
+            ):
+                remover.update(r["id"] for r in ordenados[1:])
+
     remover.update(ids_transicao_anual(completos))
     return sorted(remover)

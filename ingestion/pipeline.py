@@ -219,7 +219,7 @@ def processar_arquivo(
     try:
         caminho = download_xlsx(url)
         data_coleta = agora_utc()
-        validado = validate_xlsx_file(caminho, registros=estado_arquivos)
+        validado = validate_xlsx_file(caminho, registros=estado_arquivos, cliente=cliente)
 
         if not validado["is_new"]:
             logger.info("Conteúdo já ingerido, arquivo ignorado: %s", validado["name"])

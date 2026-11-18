@@ -41,6 +41,11 @@ jobs:
           url_sspds_historico: "https://www.sspds.ce.gov.br/"
         run: python -m pytest tests/test_versionamento.py -q
 
+      - name: Confiar no certificado intermediário da SSPDS
+        run: |
+          sudo cp certs/amazon-rsa-2048-m01.crt /usr/local/share/ca-certificates/
+          sudo update-ca-certificates
+
       - name: Executar ingestão
         env:
           HASH_CHUNK_SIZE: ${{ secrets.HASH_CHUNK_SIZE || '1048576' }}
@@ -50,6 +55,7 @@ jobs:
           DOWNLOADER_TIMEOUT: ${{ secrets.DOWNLOADER_TIMEOUT || '60' }}
           CRAWLER_TIMEOUT: ${{ secrets.CRAWLER_TIMEOUT || '20' }}
           LOG_LEVEL: "INFO"
+          REQUESTS_CA_BUNDLE: "/etc/ssl/certs/ca-certificates.crt"
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           url_sspds: ${{ secrets.URL_SSPDS }}

@@ -98,3 +98,27 @@ def test_reconciliacao_remove_versao_anterior_da_mesma_serie():
         registro(2, "corrente", "2026", 10, data="2026-11-18T10:00:00+00:00"),
     ]
     assert ids_reconciliacao(registros) == [1]
+
+
+def test_reconciliacao_preserva_salto_mensal():
+    registros = [
+        registro(1, "corrente", "2026", 8),
+        registro(2, "corrente", "2026", 10, data="2026-11-18T10:00:00+00:00"),
+    ]
+    assert ids_reconciliacao(registros) == []
+
+
+def test_reconciliacao_historica_remove_versao_anterior_em_sequencia():
+    registros = [
+        registro(1, "historica", "2009-2024"),
+        registro(2, "historica", "2009-2025", data="2026-11-18T10:00:00+00:00"),
+    ]
+    assert ids_reconciliacao(registros) == [1]
+
+
+def test_reconciliacao_preserva_intervalo_historico_inesperado():
+    registros = [
+        registro(1, "historica", "2009-2024"),
+        registro(2, "historica", "2010-2025", data="2026-11-18T10:00:00+00:00"),
+    ]
+    assert ids_reconciliacao(registros) == []

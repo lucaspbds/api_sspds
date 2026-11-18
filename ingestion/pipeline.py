@@ -159,6 +159,7 @@ def carregar_arquivo(
         cliente=cliente,
     )
 
+    publicado = False
     try:
         df = classificado.get("_dataframe")
         if df is None:
@@ -185,9 +186,17 @@ def carregar_arquivo(
             dados={"periodo_dados": classificado["periodo_dados"], "atualizado_em": agora_utc()},
             cliente=cliente,
         )
-        excluir_arquivos_por_ids(ids_antigos, cliente=cliente)
+        publicado = True
+        try:
+            excluir_arquivos_por_ids(ids_antigos, cliente=cliente)
+        except Exception:
+            # A versão nova já está publicada; preservar ambas para reconciliação.
+            logger.exception("Falha ao excluir versões substituídas; reconciliação pendente.")
     except Exception:
-        desfazer_carga(arquivo_id, cliente)
+        if not publicado:
+            desfazer_carga(arquivo_id, cliente)
+        else:
+            logger.exception("Falha após publicação; mantendo a nova versão completa id=%s", arquivo_id)
         raise
 
 
@@ -215,6 +224,14 @@ def processar_arquivo(
         serie = identificar_serie(classificado["name"])
         if serie == "historica":
             periodo = periodo_historico(classificado["name"])
+            datas_historicas = pd.to_datetime(df_inspecao.get("Data"), errors="coerce").dropna()
+            if datas_historicas.empty:
+                raise ValueError("Não foi possível validar o período do arquivo histórico.")
+            inicio, fim = map(int, periodo.split("-"))
+            if int(datas_historicas.dt.year.min()) < inicio or int(datas_historicas.dt.year.max()) > fim:
+                raise ValueError(
+                    f"Datas da planilha não correspondem ao intervalo histórico {periodo}."
+                )
             ultimo_mes = None
         else:
             datas = pd.to_datetime(df_inspecao.get("Data"), errors="coerce").dropna()

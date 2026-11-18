@@ -225,6 +225,14 @@ def ids_reconciliacao(registros: list[dict[str, Any]]) -> list[int]:
                 ]
             except (TypeError, ValueError):
                 continue
+            if len(set(pares)) == 1:
+                por_publicacao = sorted(
+                    grupo,
+                    key=lambda r: (r.get("atualizado_em") or r.get("data_coleta") or "", r["id"]),
+                    reverse=True,
+                )
+                remover.update(r["id"] for r in por_publicacao[1:])
+                continue
             # Só elimina se cada versão anterior for exatamente o mês anterior.
             sequencia_valida = all(
                 proximo_mes(*pares[i + 1]) == pares[i]
@@ -249,7 +257,14 @@ def ids_reconciliacao(registros: list[dict[str, Any]]) -> list[int]:
                 ]
             except (AttributeError, TypeError, ValueError):
                 continue
-            if all(
+            if len(set(intervalos)) == 1:
+                por_publicacao = sorted(
+                    grupo,
+                    key=lambda r: (r.get("atualizado_em") or r.get("data_coleta") or "", r["id"]),
+                    reverse=True,
+                )
+                remover.update(r["id"] for r in por_publicacao[1:])
+            elif all(
                 atual[0] == anterior[0] and atual[1] == anterior[1] + 1
                 for atual, anterior in zip(intervalos, intervalos[1:])
             ):

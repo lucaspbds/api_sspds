@@ -17,7 +17,7 @@ from .cleanup import (
     validar_pasta_temporaria,
 )
 
-from .crawler import crawler
+from .crawler import crawler, obter_serie_origem
 from .downloader import download_xlsx
 from .exception import PlanilhaSemRegistros
 from .insert import (
@@ -227,7 +227,9 @@ def processar_arquivo(
 
         classificado = classificar_arquivo(validado)
         df_inspecao = ler_planilha(classificado["path"])
-        serie = identificar_serie(classificado["name"])
+        # A seção/URL é a fonte primária; o nome é fallback para execuções
+        # isoladas e arquivos históricos com intervalo explícito.
+        serie = obter_serie_origem(url) or identificar_serie(classificado["name"])
         if serie == "historica":
             periodo = periodo_historico(classificado["name"])
             datas_historicas = pd.to_datetime(df_inspecao.get("Data"), errors="coerce").dropna()

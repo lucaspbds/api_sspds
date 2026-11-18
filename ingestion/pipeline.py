@@ -228,7 +228,7 @@ def processar_arquivo(
             if datas_historicas.empty:
                 raise ValueError("Não foi possível validar o período do arquivo histórico.")
             inicio, fim = map(int, periodo.split("-"))
-            if int(datas_historicas.dt.year.min()) < inicio or int(datas_historicas.dt.year.max()) > fim:
+            if int(datas_historicas.dt.year.min()) != inicio or int(datas_historicas.dt.year.max()) != fim:
                 raise ValueError(
                     f"Datas da planilha não correspondem ao intervalo histórico {periodo}."
                 )

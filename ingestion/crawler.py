@@ -14,6 +14,13 @@ from logging_system.logging_config import configure_logging
 
 configure_logging()
 
+# Preserva a seção de origem sem alterar o contrato público crawler() -> list[str].
+ORIGEM_POR_URL: dict[str, str] = {}
+
+
+def obter_serie_origem(url: str) -> str | None:
+    """Retorna a série da seção em que o crawler encontrou a URL."""
+    return ORIGEM_POR_URL.get(url)
 
 
 def extrair_links(conteudo_html):
@@ -163,6 +170,13 @@ def crawler() -> list[str]:
         links_historicos = extrair_links_historicos(
             soup_historico, URL_DADOS_HISTORICOS
         )
+
+        # Registra a origem antes de unificar as URLs. Em duplicidade entre
+        # seções, prevalece a seção corrente, que aparece primeiro no crawler.
+        ORIGEM_POR_URL.clear()
+        ORIGEM_POR_URL.update({url: "corrente" for url in links_atuais})
+        for url in links_historicos:
+            ORIGEM_POR_URL.setdefault(url, "historica")
 
         # Mantém a ordem: primeiro os dados atuais, depois o histórico.
         links_arquivos = list(dict.fromkeys(links_atuais + links_historicos))

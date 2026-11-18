@@ -54,7 +54,9 @@ def calculate_sha256(file_path: str | Path) -> str:
     return digest.hexdigest()
 
 
-def check_hash_in_database(file_hash: str, registros: list[dict] | None = None) -> bool:
+def check_hash_in_database(
+    file_hash: str, registros: list[dict] | None = None, cliente=None
+) -> bool:
     """Retorna True somente para hash publicado e limpa tentativas incompletas.
 
     A limpeza pressupõe execução única do workflow, para não remover carga ativa.
@@ -72,7 +74,7 @@ def check_hash_in_database(file_hash: str, registros: list[dict] | None = None) 
             return True
         for registro in correspondentes:
             if registro.get("periodo_dados") is None:
-                deletar_informacoes_arquivo(id=registro["id"])
+                deletar_informacoes_arquivo(id=registro["id"], cliente=cliente)
         return False
     except DatabaseLookupError:
         raise
@@ -110,7 +112,9 @@ def check_filename_in_database(file_name: str) -> list:
     
 
 
-def validate_xlsx_file(file_path: str | Path, registros: list[dict] | None = None) -> ValidatedFile:
+def validate_xlsx_file(
+    file_path: str | Path, registros: list[dict] | None = None, cliente=None
+) -> ValidatedFile:
     """Valida um único arquivo XLSX e retorna seus metadados.
 
     O arquivo é verificado, seu SHA-256 é calculado e o banco é consultado
@@ -139,7 +143,7 @@ def validate_xlsx_file(file_path: str | Path, registros: list[dict] | None = Non
         raise FileValidationError(f"O arquivo não possui extensão XLSX: {path}")
 
     file_hash = calculate_sha256(path)
-    already_exists = check_hash_in_database(file_hash, registros=registros)
+    already_exists = check_hash_in_database(file_hash, registros=registros, cliente=cliente)
     id_registro, name_exists = check_filename_in_database(path.name)
 
     try:

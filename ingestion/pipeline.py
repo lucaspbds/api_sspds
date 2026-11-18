@@ -191,7 +191,10 @@ def carregar_arquivo(
         raise
 
 
-def processar_arquivo(url: str, id_ingestao: int, cliente: Any) -> ResultadoArquivo:
+def processar_arquivo(
+    url: str, id_ingestao: int, cliente: Any,
+    estado_arquivos: list[dict[str, Any]] | None = None,
+) -> ResultadoArquivo:
     """Baixa, valida e (se for inédito) carrega um arquivo.
 
     Raises:
@@ -201,7 +204,7 @@ def processar_arquivo(url: str, id_ingestao: int, cliente: Any) -> ResultadoArqu
     try:
         caminho = download_xlsx(url)
         data_coleta = agora_utc()
-        validado = validate_xlsx_file(caminho)
+        validado = validate_xlsx_file(caminho, registros=estado_arquivos)
 
         if not validado["is_new"]:
             logger.info("Conteúdo já ingerido, arquivo ignorado: %s", validado["name"])
@@ -222,7 +225,7 @@ def processar_arquivo(url: str, id_ingestao: int, cliente: Any) -> ResultadoArqu
                 raise ValueError(f"Arquivo corrente contém mais de um ano: {anos}.")
             periodo = str(anos[0])
             ultimo_mes = int(datas.dt.month.max())
-        estado = listar_informacoes_arquivo(cliente=cliente)
+        estado = estado_arquivos if estado_arquivos is not None else listar_informacoes_arquivo(cliente=cliente)
         classificado.update({
             "serie": serie, "periodo_dados": periodo, "ultimo_mes": ultimo_mes,
             "tipo_crime": classificado["tipo_ocorrencia"],
@@ -298,7 +301,7 @@ def pipeline() -> ResumoIngestao:
         for indice, url in enumerate(lista_url, start=1):
             logger.info("Arquivo %s/%s: %s", indice, resumo.encontrados, url)
             try:
-                resultado = processar_arquivo(url, id_ingestao, cliente)
+                resultado = processar_arquivo(url, id_ingestao, cliente, estado_inicial)
             except Exception as erro:
                 resumo.falhas += 1
                 resumo.erros.append(f"{url}: {type(erro).__name__}: {erro}")
@@ -309,6 +312,8 @@ def pipeline() -> ResumoIngestao:
                 resumo.ignorados += 1
             else:
                 resumo.carregados += 1
+                # Atualiza a fotografia após a publicação/exclusão confirmada.
+                estado_inicial[:] = listar_informacoes_arquivo(cliente=cliente)
 
         estado_final = listar_informacoes_arquivo(cliente=cliente)
         excluir_arquivos_por_ids(ids_reconciliacao(estado_final), cliente=cliente)

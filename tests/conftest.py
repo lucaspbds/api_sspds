@@ -204,7 +204,7 @@ def ambiente(monkeypatch):
             raise amb.erros_download[nome]
         return Path("tmp") / nome
 
-    def validate_xlsx_file(caminho, registros=None):
+    def validate_xlsx_file(caminho, registros=None, cliente=None):
         nome = Path(caminho).name
         base = {
             "path": f"tmp/{nome}", "name": nome, "sha256": f"hash-{nome}",

@@ -144,6 +144,8 @@ def test_crawler_retorna_links_atuais_e_historicos_sem_duplicatas(
         "https://dados.test/historico2.xlsx",
     ]
     assert "2 links atuais, 3 históricos e 4 únicos no total" in caplog.text
+    assert modulo_crawler.obter_serie_origem("https://dados.test/arquivo1.xlsx") == "corrente"
+    assert modulo_crawler.obter_serie_origem("https://dados.test/historico1.xlsx") == "historica"
 
 #HELPERS
 @pytest.mark.parametrize("valor", [1])

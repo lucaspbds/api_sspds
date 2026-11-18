@@ -225,6 +225,7 @@ def processar_arquivo(url: str, id_ingestao: int, cliente: Any) -> ResultadoArqu
         estado = listar_informacoes_arquivo(cliente=cliente)
         classificado.update({
             "serie": serie, "periodo_dados": periodo, "ultimo_mes": ultimo_mes,
+            "tipo_crime": classificado["tipo_ocorrencia"],
             "_dataframe": df_inspecao, "_estado_arquivos": estado,
         })
         classificado.update(classificar_versao(classificado, estado))

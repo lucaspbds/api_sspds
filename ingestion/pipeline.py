@@ -27,9 +27,16 @@ from .insert import (
     inserir_historico_ingestoes,
     inserir_informacoes_arquivo,
     inserir_ocorrencias_crimes,
+    listar_informacoes_arquivo,
+    excluir_arquivos_por_ids,
+    contar_ocorrencias_por_arquivo,
 )
 from .normalizer import normalizer
 from .validator import validate_xlsx_file
+from .versionamento import (
+    identificar_serie, periodo_historico, classificar_versao,
+    ids_orfaos_antigos, ids_reconciliacao,
+)
 
 configure_logging()
 logger = logging.getLogger("ingestion.pipeline")
@@ -136,20 +143,14 @@ def carregar_arquivo(
     arquivo como totalmente carregado. Qualquer falha antes disso desfaz a
     carga (``desfazer_carga``).
     """
-    if classificado["name_exists"]:
-        # Republicação (mesmo nome, conteúdo novo): remove a versão anterior.
-        # O ON DELETE CASCADE apaga as ocorrências antigas.
-        logger.info(
-            "Arquivo republicado: removendo versão anterior id=%s", classificado["id_registro"]
-        )
-        deletar_informacoes_arquivo(id=classificado["id_registro"], cliente=cliente)
-
     arquivo_id = inserir_informacoes_arquivo(
         dados={
             "nome_arquivo": classificado["name"],
             "url_download": url,
             "hash_sha256": classificado["sha256"],
             "tipo_crime": classificado["tipo_ocorrencia"],
+            "serie": classificado["serie"],
+            "ultimo_mes": classificado.get("ultimo_mes"),
             "periodo_dados": None,
             "tamanho_bytes": classificado["size_bytes"],
             "data_coleta": data_coleta,
@@ -159,7 +160,9 @@ def carregar_arquivo(
     )
 
     try:
-        df = ler_planilha(classificado["path"])
+        df = classificado.get("_dataframe")
+        if df is None:
+            df = ler_planilha(classificado["path"])
         dados_normalizados = normalizer(
             df=df, arquivo_id=arquivo_id, tipo_ocorrencia=classificado["tipo_ocorrencia"]
         )
@@ -167,14 +170,22 @@ def carregar_arquivo(
             raise PlanilhaSemRegistros(classificado["name"])
 
         inserir_ocorrencias_crimes(dados_normalizados, cliente=cliente)
+        total_novo = contar_ocorrencias_por_arquivo(arquivo_id, cliente=cliente)
+        ids_antigos = classificado.get("ids_substituir", [])
+        for antigo in classificado.get("_estado_arquivos", []):
+            if antigo.get("id") in ids_antigos:
+                total_antigo = contar_ocorrencias_por_arquivo(antigo["id"], cliente=cliente)
+                if total_novo < total_antigo:
+                    raise ValueError(
+                        f"Nova versão possui menos ocorrências ({total_novo}) que a anterior "
+                        f"({total_antigo}); publicação bloqueada."
+                    )
         atualizar_informacoes_arquivo(
             id=arquivo_id,
-            dados={
-                "periodo_dados": calcular_periodo(dados_normalizados),
-                "atualizado_em": agora_utc(),
-            },
+            dados={"periodo_dados": classificado["periodo_dados"], "atualizado_em": agora_utc()},
             cliente=cliente,
         )
+        excluir_arquivos_por_ids(ids_antigos, cliente=cliente)
     except Exception:
         desfazer_carga(arquivo_id, cliente)
         raise
@@ -197,6 +208,29 @@ def processar_arquivo(url: str, id_ingestao: int, cliente: Any) -> ResultadoArqu
             return ResultadoArquivo.IGNORADO
 
         classificado = classificar_arquivo(validado)
+        df_inspecao = ler_planilha(classificado["path"])
+        serie = identificar_serie(classificado["name"])
+        if serie == "historica":
+            periodo = periodo_historico(classificado["name"])
+            ultimo_mes = None
+        else:
+            datas = pd.to_datetime(df_inspecao.get("Data"), errors="coerce").dropna()
+            if datas.empty:
+                raise ValueError("Não foi possível identificar o período da série corrente.")
+            anos = sorted(set(int(ano) for ano in datas.dt.year))
+            if len(anos) != 1:
+                raise ValueError(f"Arquivo corrente contém mais de um ano: {anos}.")
+            periodo = str(anos[0])
+            ultimo_mes = int(datas.dt.month.max())
+        estado = listar_informacoes_arquivo(cliente=cliente)
+        classificado.update({
+            "serie": serie, "periodo_dados": periodo, "ultimo_mes": ultimo_mes,
+            "_dataframe": df_inspecao, "_estado_arquivos": estado,
+        })
+        classificado.update(classificar_versao(classificado, estado))
+        if classificado.get("avisos"):
+            logger.warning("Classificação ambígua para %s: %s", classificado["name"], classificado["avisos"])
+            raise ValueError("Classificação de versão ambígua; versão anterior preservada.")
         carregar_arquivo(url, classificado, data_coleta, id_ingestao, cliente)
         return ResultadoArquivo.CARREGADO
     finally:
@@ -254,6 +288,8 @@ def pipeline() -> ResumoIngestao:
 
     try:
         logger.info("Crawler iniciado")
+        estado_inicial = listar_informacoes_arquivo(cliente=cliente)
+        excluir_arquivos_por_ids(ids_orfaos_antigos(estado_inicial), cliente=cliente)
         lista_url = crawler()
         resumo.encontrados = len(lista_url)
 
@@ -273,6 +309,8 @@ def pipeline() -> ResumoIngestao:
             else:
                 resumo.carregados += 1
 
+        estado_final = listar_informacoes_arquivo(cliente=cliente)
+        excluir_arquivos_por_ids(ids_reconciliacao(estado_final), cliente=cliente)
         logger.info(
             "Processamento finalizado: %s carregados, %s ignorados, %s falhas",
             resumo.carregados, resumo.ignorados, resumo.falhas,

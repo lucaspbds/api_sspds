@@ -498,3 +498,57 @@ Valores de exemplo e demais detalhes: [`.env.example`](../.env.example) e [`READ
 - Copia `ingestion/`, `database/` e `logging_system/`.
 - Comando padrão: `python -m ingestion.pipeline`.
 - O `.env` **não** é copiado para a imagem: é injetado pelo `env_file` do `compose.yml`.
+
+
+---
+
+## 8. Versionamento resiliente das planilhas SSPDS
+
+O pipeline mantém duas identidades independentes por tipo de crime:
+
+- `corrente`: planilha cumulativa do ano vigente, identificada pelo mês mais recente presente nos dados;
+- `historica`: planilha com intervalo de anos no nome, por exemplo `2009-a-2025`.
+
+A identidade lógica é `(tipo_crime, serie)`. O nome e o hash identificam o arquivo/conteúdo, mas não definem sozinhos qual série será substituída.
+
+### 8.1 Ordem de publicação
+
+1. Baixar o arquivo e calcular SHA-256.
+2. Consultar a fotografia dos metadados; hash completo é ignorado.
+3. Hash associado a `periodo_dados = NULL` é tratado como tentativa incompleta e removido antes da reexecução.
+4. Inspecionar o período e classificar a versão, sem normalizar as ocorrências.
+5. Inserir um novo registro em `informacoes_arquivo` com `periodo_dados = NULL`, preservando a versão anterior.
+6. Normalizar e inserir ocorrências.
+7. Comparar a quantidade de ocorrências com a versão substituída. Redução bloqueia a publicação automática.
+8. Preencher `periodo_dados` e `atualizado_em` como última etapa de publicação.
+9. Excluir a versão anterior somente depois da publicação confirmada.
+
+Falhas antes da publicação desfazem a nova tentativa; a versão anterior permanece disponível.
+
+### 8.2 Regras de classificação
+
+- Corrente: mês seguinte é acréscimo; mesmo ano/mês com hash diferente é correção.
+- Histórica: mesmo início e fim avançando um ano é acréscimo; intervalo igual com hash diferente é correção.
+- Saltos de mês, mudanças inesperadas de intervalo ou múltiplos candidatos geram aviso e não removem a versão anterior.
+- A série corrente e a histórica nunca são comparadas como versões concorrentes.
+
+### 8.3 Recuperação e reconciliação
+
+- Registros incompletos antigos (`periodo_dados IS NULL`) são purgados após seis horas.
+- A purga pressupõe uma única execução simultânea. O workflow `.github/workflows/ingestion.yml` usa `concurrency` e `cancel-in-progress: false`.
+- Ao final, a reconciliação remove versões completas superadas dentro da mesma série.
+- A corrente de um ano encerrado só é removida quando a série histórica completa já cobre esse ano.
+
+### 8.4 Colunas existentes utilizadas
+
+Nenhuma migração é executada pelo serviço. O pipeline grava `serie` (`corrente` ou `historica`) e `ultimo_mes` (mês numérico da corrente; `NULL` para histórica), e utiliza `periodo_dados` nulo como marcador de carga incompleta/não publicada.
+
+### 8.5 Testes
+
+As regras determinísticas ficam em `tests/test_versionamento.py` e podem ser executadas com:
+
+```bash
+python -m pytest tests/test_versionamento.py -q
+```
+
+O workflow pode ser iniciado manualmente pela aba Actions. A execução é serializada para proteger a purga de registros incompletos.

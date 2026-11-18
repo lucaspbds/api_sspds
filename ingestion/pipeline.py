@@ -34,7 +34,7 @@ from .insert import (
 from .normalizer import normalizer
 from .validator import validate_xlsx_file
 from .versionamento import (
-    identificar_serie, periodo_historico, classificar_versao,
+    identificar_serie, periodo_historico, extrair_ultimo_mes, classificar_versao,
     ids_orfaos_antigos, ids_reconciliacao,
 )
 
@@ -248,6 +248,11 @@ def processar_arquivo(
                 raise ValueError(f"Arquivo corrente contém mais de um ano: {anos}.")
             periodo = str(anos[0])
             ultimo_mes = int(datas.dt.month.max())
+            mes_no_nome = extrair_ultimo_mes(classificado["name"])
+            if mes_no_nome is not None and mes_no_nome != ultimo_mes:
+                raise ValueError(
+                    f"Mês do nome ({mes_no_nome}) diverge do último mês dos dados ({ultimo_mes})."
+                )
         estado = estado_arquivos if estado_arquivos is not None else listar_informacoes_arquivo(cliente=cliente)
         classificado.update({
             "serie": serie, "periodo_dados": periodo, "ultimo_mes": ultimo_mes,

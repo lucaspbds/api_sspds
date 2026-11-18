@@ -55,6 +55,7 @@ class ResultadoArquivo(Enum):
 
     CARREGADO = "carregado"
     IGNORADO = "ignorado"
+    AVISO = "aviso"
 
 
 @dataclass
@@ -66,6 +67,7 @@ class ResumoIngestao:
     ignorados: int = 0
     falhas: int = 0
     erros: list[str] = field(default_factory=list)
+    avisos: list[str] = field(default_factory=list)
     erro_fatal: str | None = None
 
     @property
@@ -87,6 +89,9 @@ class ResumoIngestao:
         partes: list[str] = []
         if self.erro_fatal:
             partes.append(f"Execução interrompida: {self.erro_fatal}")
+        if self.avisos:
+            partes.append(f"{len(self.avisos)} aviso(s):")
+            partes.extend(self.avisos[:MAX_ERROS_NA_MENSAGEM])
         if self.erros:
             partes.append(f"{len(self.erros)} arquivo(s) com falha:")
             partes.extend(self.erros[:MAX_ERROS_NA_MENSAGEM])
@@ -203,6 +208,7 @@ def carregar_arquivo(
 def processar_arquivo(
     url: str, id_ingestao: int, cliente: Any,
     estado_arquivos: list[dict[str, Any]] | None = None,
+    avisos_execucao: list[str] | None = None,
 ) -> ResultadoArquivo:
     """Baixa, valida e (se for inédito) carrega um arquivo.
 
@@ -250,8 +256,11 @@ def processar_arquivo(
         })
         classificado.update(classificar_versao(classificado, estado))
         if classificado.get("avisos"):
-            logger.warning("Classificação ambígua para %s: %s", classificado["name"], classificado["avisos"])
-            raise ValueError("Classificação de versão ambígua; versão anterior preservada.")
+            mensagem = f"{classificado['name']}: {'; '.join(classificado['avisos'])}"
+            logger.warning("Classificação ambígua; versão anterior preservada: %s", mensagem)
+            if avisos_execucao is not None:
+                avisos_execucao.append(mensagem)
+            return ResultadoArquivo.AVISO
         carregar_arquivo(url, classificado, data_coleta, id_ingestao, cliente)
         return ResultadoArquivo.CARREGADO
     finally:
@@ -318,7 +327,9 @@ def pipeline() -> ResumoIngestao:
         for indice, url in enumerate(lista_url, start=1):
             logger.info("Arquivo %s/%s: %s", indice, resumo.encontrados, url)
             try:
-                resultado = processar_arquivo(url, id_ingestao, cliente, estado_inicial)
+                resultado = processar_arquivo(
+                    url, id_ingestao, cliente, estado_inicial, resumo.avisos
+                )
             except Exception as erro:
                 resumo.falhas += 1
                 resumo.erros.append(f"{url}: {type(erro).__name__}: {erro}")
@@ -327,6 +338,8 @@ def pipeline() -> ResumoIngestao:
 
             if resultado is ResultadoArquivo.IGNORADO:
                 resumo.ignorados += 1
+            elif resultado is ResultadoArquivo.AVISO:
+                continue
             else:
                 resumo.carregados += 1
                 # Atualiza a fotografia após a publicação/exclusão confirmada.

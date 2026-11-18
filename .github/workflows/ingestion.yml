@@ -31,6 +31,7 @@ jobs:
       - name: Executar testes da ingestão
         env:
           HASH_CHUNK_SIZE: "1048576"
+          DOWNLOADER_TIMEOUT: "60"
           TEMP_PATH: "tmp"
           INSERT_CHUNK_SIZE: "500"
           CHUNK_SIZE: "1048576"
@@ -39,7 +40,7 @@ jobs:
           SUPABASE_KEY: "test-key"
           url_sspds: "https://www.sspds.ce.gov.br/"
           url_sspds_historico: "https://www.sspds.ce.gov.br/"
-        run: python -m pytest tests/test_versionamento.py -q
+        run: python -m pytest tests/test_versionamento.py tests/test_ingestion.py -q
 
       - name: Confiar no certificado intermediário da SSPDS
         run: |

@@ -254,7 +254,7 @@ def ambiente(monkeypatch):
         "crawler": crawler,
         "download_xlsx": download_xlsx,
         "validate_xlsx_file": validate_xlsx_file,
-        "ler_planilha": lambda caminho: "df-fake",
+         "ler_planilha": lambda caminho: pd.DataFrame({"Data": ["2024-01-01", "2024-05-01"]}),
         "normalizer": normalizer,
         "inserir_historico_ingestoes": inserir_historico_ingestoes,
         "atualizar_historico_ingestoes": atualizar_historico_ingestoes,
@@ -262,6 +262,9 @@ def ambiente(monkeypatch):
         "atualizar_informacoes_arquivo": atualizar_informacoes_arquivo,
         "deletar_informacoes_arquivo": deletar_informacoes_arquivo,
         "inserir_ocorrencias_crimes": inserir_ocorrencias_crimes,
+        "listar_informacoes_arquivo": lambda cliente=None: [],
+        "excluir_arquivos_por_ids": lambda ids, cliente=None: registrar("arquivos_excluidos", list(ids)),
+        "contar_ocorrencias_por_arquivo": lambda arquivo_id, cliente=None: len(amb.registros),
     }
     for nome, funcao in fakes.items():
         monkeypatch.setattr(modulo_pipeline, nome, funcao)

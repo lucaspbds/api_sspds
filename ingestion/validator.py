@@ -72,9 +72,14 @@ def check_hash_in_database(
         correspondentes = [r for r in registros if r.get("hash_sha256") == file_hash]
         if any(r.get("periodo_dados") is not None for r in correspondentes):
             return True
+        # Um hash incompleto só pode ser removido depois que o pipeline garantiu
+        # exclusividade de execução (concurrency do Actions). Atualize também a
+        # fotografia em memória para não reutilizar um órfão já apagado.
         for registro in correspondentes:
             if registro.get("periodo_dados") is None:
                 deletar_informacoes_arquivo(id=registro["id"], cliente=cliente)
+                if isinstance(registros, list):
+                    registros[:] = [r for r in registros if r.get("id") != registro["id"]]
         return False
     except DatabaseLookupError:
         raise

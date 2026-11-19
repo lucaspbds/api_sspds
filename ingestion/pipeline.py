@@ -181,6 +181,11 @@ def carregar_arquivo(
 
         inserir_ocorrencias_crimes(dados_normalizados, cliente=cliente)
         total_novo = contar_ocorrencias_por_arquivo(arquivo_id, cliente=cliente)
+        if total_novo != len(dados_normalizados):
+            raise RuntimeError(
+                f"Inserção incompleta: normalizados={len(dados_normalizados)}, "
+                f"persistidos={total_novo}."
+            )
         ids_antigos = classificado.get("ids_substituir", [])
         for antigo in classificado.get("_estado_arquivos", []):
             if antigo.get("id") in ids_antigos:

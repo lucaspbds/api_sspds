@@ -1153,7 +1153,7 @@ def test_check_hash_in_database_encapsula_erro_inesperado_do_banco(monkeypatch):
         modulo_validator, "consultar_registros", Mock(side_effect=RuntimeError("banco indisponível"))
     )
 
-    with pytest.raises(DatabaseLookupError, match="Falha ao consultar o hash"):
+    with pytest.raises(DatabaseLookupError, match="Falha ao verificar o hash"):
         modulo_validator.check_hash_in_database("hash")
 
 

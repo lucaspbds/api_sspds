@@ -157,3 +157,12 @@ def test_reconciliacao_repetida_e_idempotente():
     sobreviventes = [r for r in registros if r["id"] not in ids]
     assert ids == [1]
     assert ids_reconciliacao(sobreviventes) == []
+
+def test_transicao_anual_remove_todas_as_versoes_do_ano_apos_dezembro():
+    registros = [
+        registro(1, "corrente", "2026", 10),
+        registro(2, "corrente", "2026", 12, data="2026-12-20T10:00:00+00:00"),
+        registro(3, "historica", "2009-2026"),
+        registro(4, "corrente", "2027", 1),
+    ]
+    assert ids_transicao_anual(registros) == [1, 2]

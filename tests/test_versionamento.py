@@ -122,3 +122,38 @@ def test_reconciliacao_preserva_intervalo_historico_inesperado():
         registro(2, "historica", "2010-2025", data="2026-11-18T10:00:00+00:00"),
     ]
     assert ids_reconciliacao(registros) == []
+
+def test_transicao_anual_preserva_corrente_incompleta_mes_10():
+    registros = [
+        registro(1, "corrente", "2026", 10),
+        registro(2, "historica", "2009-2026"),
+    ]
+    assert ids_transicao_anual(registros) == []
+    assert ids_reconciliacao(registros) == []
+
+
+def test_transicao_anual_remove_corrente_somente_com_dezembro():
+    registros = [
+        registro(1, "corrente", "2026", 12),
+        registro(2, "historica", "2009-2026"),
+    ]
+    assert ids_transicao_anual(registros) == [1]
+
+
+def test_transicao_anual_preserva_corrente_quando_mes_e_invalido():
+    registros = [
+        registro(1, "corrente", "2026", None),
+        registro(2, "historica", "2009-2026"),
+    ]
+    assert ids_transicao_anual(registros) == []
+
+
+def test_reconciliacao_repetida_e_idempotente():
+    registros = [
+        registro(1, "corrente", "2026", 9),
+        registro(2, "corrente", "2026", 10, data="2026-11-18T10:00:00+00:00"),
+    ]
+    ids = ids_reconciliacao(registros)
+    sobreviventes = [r for r in registros if r["id"] not in ids]
+    assert ids == [1]
+    assert ids_reconciliacao(sobreviventes) == []

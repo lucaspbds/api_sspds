@@ -1304,3 +1304,77 @@ def test_check_hash_completo_nao_remove_registro(monkeypatch):
 
     assert modulo_validator.check_hash_in_database("hash-ok", registros=registros) is True
     remover.assert_not_called()
+
+def test_carregar_arquivo_bloqueia_contagem_persistida_incompleta(monkeypatch):
+    inserir_arquivo = Mock(return_value=50)
+    remover_arquivo = Mock()
+    monkeypatch.setattr(modulo_pipeline, "inserir_informacoes_arquivo", inserir_arquivo)
+    monkeypatch.setattr(modulo_pipeline, "normalizer", Mock(return_value=[{}, {}]))
+    monkeypatch.setattr(modulo_pipeline, "inserir_ocorrencias_crimes", Mock())
+    monkeypatch.setattr(modulo_pipeline, "contar_ocorrencias_por_arquivo", Mock(return_value=1))
+    monkeypatch.setattr(modulo_pipeline, "deletar_informacoes_arquivo", remover_arquivo)
+
+    classificado = {
+        "name": "CVLI_Outubro.xlsx",
+        "sha256": "hash-novo",
+        "tipo_ocorrencia": "CVLI",
+        "serie": "corrente",
+        "ultimo_mes": 10,
+        "periodo_dados": "2026",
+        "size_bytes": 100,
+        "path": "tmp/CVLI_Outubro.xlsx",
+        "_dataframe": pd.DataFrame(),
+    }
+
+    with pytest.raises(RuntimeError, match="Inserção incompleta"):
+        modulo_pipeline.carregar_arquivo(
+            "https://dados.test/CVLI_Outubro.xlsx",
+            classificado,
+            "2026-11-19T00:00:00+00:00",
+            99,
+            "cliente-fake",
+        )
+
+    remover_arquivo.assert_called_once_with(id=50, cliente="cliente-fake")
+
+
+def test_carregar_arquivo_nao_publica_reducao_de_ocorrencias(monkeypatch):
+    monkeypatch.setattr(modulo_pipeline, "inserir_informacoes_arquivo", Mock(return_value=50))
+    monkeypatch.setattr(modulo_pipeline, "normalizer", Mock(return_value=[{}, {}]))
+    monkeypatch.setattr(modulo_pipeline, "inserir_ocorrencias_crimes", Mock())
+    monkeypatch.setattr(
+        modulo_pipeline, "contar_ocorrencias_por_arquivo", Mock(side_effect=[2, 3])
+    )
+    remover_arquivo = Mock()
+    atualizar_arquivo = Mock()
+    excluir_antigo = Mock()
+    monkeypatch.setattr(modulo_pipeline, "deletar_informacoes_arquivo", remover_arquivo)
+    monkeypatch.setattr(modulo_pipeline, "atualizar_informacoes_arquivo", atualizar_arquivo)
+    monkeypatch.setattr(modulo_pipeline, "excluir_arquivos_por_ids", excluir_antigo)
+
+    classificado = {
+        "name": "CVLI_Outubro.xlsx",
+        "sha256": "hash-novo",
+        "tipo_ocorrencia": "CVLI",
+        "serie": "corrente",
+        "ultimo_mes": 10,
+        "periodo_dados": "2026",
+        "size_bytes": 100,
+        "path": "tmp/CVLI_Outubro.xlsx",
+        "ids_substituir": [1],
+        "_estado_arquivos": [{"id": 1}],
+        "_dataframe": pd.DataFrame(),
+    }
+
+    with pytest.raises(modulo_pipeline.IntegridadeVersaoError, match="menos ocorrências"):
+        modulo_pipeline.carregar_arquivo(
+            "https://dados.test/CVLI_Outubro.xlsx",
+            classificado,
+            "2026-11-19T00:00:00+00:00",
+            99,
+            "cliente-fake",
+        )
+
+    remover_arquivo.assert_called_once_with(id=50, cliente="cliente-fake")
+    atualizar_arquivo.assert_not_called()
+    excluir_antigo.assert_not_called()

@@ -189,13 +189,14 @@ def ids_transicao_anual(registros: list[dict[str, Any]]) -> list[int]:
             intervalo = normalizar_periodo(historico.get("periodo_dados"))
             try:
                 _, fim = map(int, intervalo.split("-"))
-            except (AttributeError, ValueError):
+                ultimo_mes = int(corrente.get("ultimo_mes") or 0)
+            except (AttributeError, TypeError, ValueError):
                 continue
             # A série corrente só pode ser descartada depois de cobrir o ano
             # inteiro. O mês 12 é a evidência persistida de que a versão corrente
             # chegou ao encerramento; um histórico publicado até esse ano, sozinho,
             # não prova que uma corrente interrompida em outubro/novembro foi coberta.
-            if fim == ano and int(corrente.get("ultimo_mes") or 0) == 12:
+            if fim == ano and ultimo_mes == 12:
                 remover.append(corrente["id"])
                 break
     return sorted(set(remover))

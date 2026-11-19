@@ -50,6 +50,10 @@ STATUS_INGESTAO_SUCESSO = "SUCESSO"
 STATUS_INGESTAO_PARCIAL = "PARCIAL"
 STATUS_INGESTAO_FALHA = "FALHA"
 
+class IntegridadeVersaoError(ValueError):
+    """Nova versão não atende aos critérios mínimos para substituir a anterior."""
+
+
 class ResultadoArquivo(Enum):
     """Desfecho de um arquivo que não gerou exceção."""
 
@@ -182,7 +186,7 @@ def carregar_arquivo(
             if antigo.get("id") in ids_antigos:
                 total_antigo = contar_ocorrencias_por_arquivo(antigo["id"], cliente=cliente)
                 if total_novo < total_antigo:
-                    raise ValueError(
+                    raise IntegridadeVersaoError(
                         f"Nova versão possui menos ocorrências ({total_novo}) que a anterior "
                         f"({total_antigo}); publicação bloqueada."
                     )
@@ -268,7 +272,14 @@ def processar_arquivo(
             if avisos_execucao is not None:
                 avisos_execucao.append(mensagem)
             return ResultadoArquivo.AVISO
-        carregar_arquivo(url, classificado, data_coleta, id_ingestao, cliente)
+        try:
+            carregar_arquivo(url, classificado, data_coleta, id_ingestao, cliente)
+        except IntegridadeVersaoError as erro:
+            mensagem = f"{classificado['name']}: {erro}"
+            logger.warning("Publicação bloqueada por divergência de integridade: %s", mensagem)
+            if avisos_execucao is not None:
+                avisos_execucao.append(mensagem)
+            return ResultadoArquivo.AVISO
         return ResultadoArquivo.CARREGADO
     finally:
         if caminho is not None:
@@ -326,7 +337,11 @@ def pipeline() -> ResumoIngestao:
     try:
         logger.info("Crawler iniciado")
         estado_inicial = listar_informacoes_arquivo(cliente=cliente)
-        excluir_arquivos_por_ids(ids_orfaos_antigos(estado_inicial), cliente=cliente)
+        ids_orfaos = ids_orfaos_antigos(estado_inicial)
+        excluir_arquivos_por_ids(ids_orfaos, cliente=cliente)
+        if ids_orfaos:
+            removidos = set(ids_orfaos)
+            estado_inicial = [r for r in estado_inicial if r.get("id") not in removidos]
         lista_url = crawler()
         resumo.encontrados = len(lista_url)
 

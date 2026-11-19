@@ -1279,3 +1279,28 @@ def test_remover_arquivo_temporario_nao_propaga_erro_do_sistema(tmp_path):
     # Um diretório não pode ser removido com unlink: deve virar apenas aviso.
     remover_arquivo_temporario(tmp_path)
     assert tmp_path.exists()
+
+def test_check_hash_remove_orfao_da_fotografia_em_memoria(monkeypatch):
+    registros = [
+        {"id": 10, "hash_sha256": "hash-orfa", "periodo_dados": None},
+        {"id": 11, "hash_sha256": "outro-hash", "periodo_dados": "2026"},
+    ]
+    removidos = []
+    monkeypatch.setattr(
+        modulo_validator,
+        "deletar_informacoes_arquivo",
+        lambda id, cliente=None: removidos.append(id),
+    )
+
+    assert modulo_validator.check_hash_in_database("hash-orfa", registros=registros) is False
+    assert removidos == [10]
+    assert [r["id"] for r in registros] == [11]
+
+
+def test_check_hash_completo_nao_remove_registro(monkeypatch):
+    registros = [{"id": 10, "hash_sha256": "hash-ok", "periodo_dados": "2026"}]
+    remover = Mock()
+    monkeypatch.setattr(modulo_validator, "deletar_informacoes_arquivo", remover)
+
+    assert modulo_validator.check_hash_in_database("hash-ok", registros=registros) is True
+    remover.assert_not_called()

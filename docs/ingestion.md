@@ -537,7 +537,8 @@ Falhas antes da publicação desfazem a nova tentativa; a versão anterior perma
 - Registros incompletos antigos (`periodo_dados IS NULL`) são purgados após seis horas.
 - A purga pressupõe uma única execução simultânea. O workflow `.github/workflows/ingestion.yml` usa `concurrency` e `cancel-in-progress: false`.
 - Ao final, a reconciliação remove versões completas superadas dentro da mesma série.
-- A corrente de um ano encerrado só é removida quando a série histórica completa já cobre esse ano.
+- A corrente de um ano encerrado só é removida quando a série histórica completa já cobre esse ano **e** a versão corrente armazenada chegou ao mês 12 (`ultimo_mes = 12`). Um histórico atualizado, sozinho, não autoriza excluir uma corrente que parou em outubro/novembro.
+- A validação compara a quantidade persistida com a quantidade normalizada; divergência interrompe a publicação. Se a nova versão tiver menos ocorrências que a anterior, a carga é desfeita e a situação é registrada como aviso, sem substituir a versão válida.
 
 ### 8.4 Colunas existentes utilizadas
 

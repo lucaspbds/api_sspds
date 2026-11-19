@@ -170,36 +170,48 @@ def ids_orfaos_antigos(
 
 
 def ids_transicao_anual(registros: list[dict[str, Any]]) -> list[int]:
-    """Remove corrente encerrada somente quando o histórico correspondente está publicado."""
+    """Remove todas as versões correntes do ano só após cobertura anual validada.
+
+    A existência de um histórico que termina no ano não basta: exige-se também
+    ao menos uma versão corrente completa daquele tipo/ano com ultimo_mes=12.
+    Depois dessa confirmação, todas as versões correntes antigas daquele ano
+    estão cobertas pelo histórico e podem ser removidas.
+    """
     completos = [r for r in registros if r.get("periodo_dados") is not None]
-    remover = []
-    for corrente in completos:
-        if corrente.get("serie") != "corrente":
-            continue
-        try:
-            ano = int(normalizar_periodo(corrente.get("periodo_dados")))
-        except (TypeError, ValueError):
-            continue
-        historicos = [
-            h for h in completos
-            if h.get("serie") == "historica"
-            and h.get("tipo_crime") == corrente.get("tipo_crime")
-        ]
-        for historico in historicos:
-            intervalo = normalizar_periodo(historico.get("periodo_dados"))
+    correntes: dict[tuple[str, int], list[dict[str, Any]]] = {}
+    historicos: dict[str, list[tuple[int, int]]] = {}
+
+    for registro in completos:
+        tipo = registro.get("tipo_crime")
+        serie = registro.get("serie")
+        periodo = normalizar_periodo(registro.get("periodo_dados"))
+        if serie == "corrente":
             try:
-                _, fim = map(int, intervalo.split("-"))
-                ultimo_mes = int(corrente.get("ultimo_mes") or 0)
+                ano = int(periodo)
+            except (TypeError, ValueError):
+                continue
+            correntes.setdefault((tipo, ano), []).append(registro)
+        elif serie == "historica":
+            try:
+                inicio, fim = map(int, periodo.split("-"))
             except (AttributeError, TypeError, ValueError):
                 continue
-            # A série corrente só pode ser descartada depois de cobrir o ano
-            # inteiro. O mês 12 é a evidência persistida de que a versão corrente
-            # chegou ao encerramento; um histórico publicado até esse ano, sozinho,
-            # não prova que uma corrente interrompida em outubro/novembro foi coberta.
-            if fim == ano and ultimo_mes == 12:
-                remover.append(corrente["id"])
-                break
-    return sorted(set(remover))
+            if inicio <= fim:
+                historicos.setdefault(tipo, []).append((inicio, fim))
+
+    remover: set[int] = set()
+    for (tipo, ano), versoes_correntes in correntes.items():
+        historico_cobre_ano = any(
+            inicio <= ano <= fim for inicio, fim in historicos.get(tipo, [])
+        )
+        corrente_fechada = any(
+            str(versao.get("ultimo_mes") or "") == "12"
+            for versao in versoes_correntes
+        )
+        if historico_cobre_ano and corrente_fechada:
+            remover.update(versao["id"] for versao in versoes_correntes)
+
+    return sorted(remover)
 
 
 def ids_reconciliacao(registros: list[dict[str, Any]]) -> list[int]:

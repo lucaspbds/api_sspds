@@ -459,7 +459,8 @@ def test_classificar_arquivo_enriquece_copia_sem_alterar_metadado_original():
 def test_hash_so_conta_como_ingerido_com_periodo_preenchido(monkeypatch, registros, esperado):
     consulta = Mock(return_value=registros)
     monkeypatch.setattr(modulo_validator, "consultar_registros", consulta)
-
+    monkeypatch.setattr(modulo_validator, "deletar_informacoes_arquivo", Mock(return_value=False)
+)
     assert modulo_validator.check_hash_in_database("h") is esperado
     consulta.assert_called_once_with(
         tabela="informacoes_arquivo", filtros={"hash_sha256": "h"}
@@ -594,13 +595,13 @@ def test_arquivo_novo_e_carregado_e_concluido(ambiente):
     assert resumo.status == STATUS_INGESTAO_SUCESSO
 
 def test_periodo_cobre_varios_anos(ambiente):
-    URL_CVLI = "https://dados.test/CVLI_2024.xlsx"
+    URL_CVLI = "https://dados.test/CVLI_2019-a-2024.xlsx"
     ambiente.urls = [URL_CVLI]
     ambiente.registros = [{"data_fato": "2019-12-31"}, {"data_fato": "2024-01-01"}]
-
+    ambiente.df_data = pd.DataFrame({"Data": ["2019-12-31", "2024-01-01"]})
     modulo_pipeline.pipeline()
 
-    assert ambiente.dados("arquivo_atualizado")[-1]["periodo_dados"] == "2019 - 2024"
+    assert ambiente.dados("arquivo_atualizado")[-1]["periodo_dados"] == "2019-2024"
 
 def test_arquivo_temporario_e_pasta_sao_removidos(ambiente):
     URL_CVLI = "https://dados.test/CVLI_2024.xlsx"
@@ -664,21 +665,56 @@ def test_arquivo_ja_ingerido_e_ignorado_sem_tocar_no_banco(ambiente):
     assert resumo.status == STATUS_INGESTAO_SUCESSO
     assert len(ambiente.dados("arquivo_removido")) == 1
 
-def test_republicacao_apaga_versao_anterior_antes_de_recarregar(ambiente):
+
+def test_republicacao_publica_nova_versao_antes_de_excluir_anterior(
+    ambiente, monkeypatch
+):
     URL_CVLI = "https://dados.test/CVLI_2024.xlsx"
-    
+
     ambiente.urls = [URL_CVLI]
-    ambiente.validacoes["CVLI_2024.xlsx"] = {"is_new": True, "name_exists": True, "id_registro": 7}
+
+    # Simula a versão anterior já publicada no banco.
+    estado_anterior = [{
+        "id": 7,
+        "nome_arquivo": "CVLI_2024.xlsx",
+        "tipo_crime": "CRIMES VIOLENTOS LETAIS E INTENCIONAIS - CVLI",
+        "serie": "corrente",
+        "periodo_dados": "2024",
+        "ultimo_mes": 5,
+        "hash_sha256": "hash-antigo",
+    }]
+
+    # O pipeline precisa encontrar o registro antigo na fotografia do banco.
+    monkeypatch.setattr(
+        modulo_pipeline,
+        "listar_informacoes_arquivo",
+        lambda cliente=None: estado_anterior,
+    )
 
     resumo = modulo_pipeline.pipeline()
 
-    assert ambiente.dados("arquivo_deletado") == [{"id": 7}]
-    assert ambiente.posicao("arquivo_deletado") < ambiente.posicao("arquivo_inserido")
+    # A nova versão deve ser inserida.
     inserido = ambiente.dados("arquivo_inserido")[0]
+
     assert inserido["id"] != 7
     assert inserido["periodo_dados"] is None
-    assert ambiente.dados("arquivo_atualizado")[-1]["periodo_dados"] == "2024"
+
+    # A nova versão deve ser publicada.
+    atualizado = ambiente.dados("arquivo_atualizado")[-1]
+
+    assert atualizado["periodo_dados"] == "2024"
+
+    # A versão antiga só pode ser excluída depois da publicação.
+    assert ambiente.dados("arquivos_excluidos") == [[7]]
+
+    assert (
+        ambiente.posicao("arquivo_inserido")
+        < ambiente.posicao("arquivo_atualizado")
+        < ambiente.posicao("arquivos_excluidos")
+    )
+
     assert resumo.carregados == 1
+
 
 def test_planilha_vazia_desfaz_a_carga_sem_queimar_o_hash(ambiente):
     URL_CVLI = "https://dados.test/CVLI_2024.xlsx"

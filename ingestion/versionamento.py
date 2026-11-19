@@ -1,14 +1,5 @@
-"""Regras de identidade, classificação e reconciliação das versões SSPDS.
-
-Este módulo pertence exclusivamente ao serviço de ingestão. Não altera o
-schema do banco: utiliza serie e ultimo_mes já existentes em
-informacoes_arquivo.
-"""
-from __future__ import annotations
-
 import logging
 import re
-from calendar import month_name
 from datetime import datetime, timedelta, timezone
 from typing import Any
 

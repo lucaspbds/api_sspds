@@ -65,12 +65,13 @@ def check_hash_in_database(
         raise DatabaseLookupError("O hash consultado não pode ser vazio.")
     try:
         if registros is None:
-            registros = consultar_registros(
+            correspondentes = consultar_registros(
                 tabela="informacoes_arquivo",
                 filtros={"hash_sha256": file_hash},
             )
-        correspondentes = [r for r in registros if r.get("hash_sha256") == file_hash]
-        if any(r.get("periodo_dados") is not None for r in correspondentes):
+        else:
+            correspondentes = [r for r in registros if r.get("hash_sha256") == file_hash]
+        if any(r.get("periodo_dados") is not None and str(r.get("periodo_dados")).strip() for r in correspondentes):
             return True
         # Um hash incompleto só pode ser removido depois que o pipeline garantiu
         # exclusividade de execução (concurrency do Actions). Atualize também a

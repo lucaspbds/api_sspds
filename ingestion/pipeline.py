@@ -115,14 +115,6 @@ def ler_planilha(caminho: str) -> pd.DataFrame:
     """Lê a planilha (primeira aba). Isolada para facilitar testes e evoluções."""
     return pd.read_excel(caminho)
 
-
-def calcular_periodo(dados: list[dict[str, Any]]) -> str:
-    """Retorna ``"2024"`` ou ``"2019 - 2024"`` a partir de ``data_fato``."""
-    anos = [datetime.fromisoformat(dado["data_fato"]).year for dado in dados]
-    ano_min, ano_max = min(anos), max(anos)
-    return str(ano_min) if ano_min == ano_max else f"{ano_min} - {ano_max}"
-
-
 def desfazer_carga(arquivo_id: int, cliente: Any) -> None:
     """Compensa uma carga que falhou, sem mascarar o erro original.
 

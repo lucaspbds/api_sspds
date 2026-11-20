@@ -172,6 +172,12 @@ Armazena o resumo estruturado de cada requisição HTTP processada pela API Fast
 
 ---
 
+### 3.5. View: `vw_ocorrencias_publicadas`
+View de leitura utilizada pela API FastAPI para consultar apenas ocorrências cujos arquivos já concluíram a carga e possuem `periodo_dados` preenchido na tabela `informacoes_arquivo` (`periodo_dados IS NOT NULL AND BTRIM(periodo_dados) <> ''`).
+
+- **Colunas expostas:** Exatamente as mesmas 22 colunas da tabela `ocorrencias_crimes`.
+- **Segurança:** Criada com `WITH (security_invoker = true)` para respeitar o RLS das tabelas base, com acesso bloqueado para `PUBLIC`, `anon` e `authenticated` e permissão exclusiva de `SELECT` para `service_role`.
+
 ## 4. Decisões Arquiteturais e Justificativas
 
 1. **Tabela Única para Ocorrências (*Single Table*):**  
@@ -333,6 +339,41 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.informacoes_arquivo TO service_ro
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.ocorrencias_crimes TO service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.api_request_logs TO service_role;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO service_role;
+
+-- 8. View de Consumo da API (Ocorrências de Arquivos Publicados)
+CREATE OR REPLACE VIEW public.vw_ocorrencias_publicadas
+WITH (security_invoker = true) AS
+SELECT
+    oc.id,
+    oc.arquivo_id,
+    oc.tipo_crime,
+    oc.municipio,
+    oc.ais,
+    oc.local_fato,
+    oc.data_fato,
+    oc.hora_fato,
+    oc.dia_semana,
+    oc.st_dia_semana_divergente,
+    oc.st_idade_invalida,
+    oc.natureza,
+    oc.meio_empregado,
+    oc.vitima_genero,
+    oc.vitima_idade,
+    oc.vitima_escolaridade,
+    oc.vitima_raca,
+    oc.vitima_orientacao_sexual,
+    oc.quantidade_armas,
+    oc.tipo_entorpecente,
+    oc.peso_entorpecente_kg,
+    oc.criado_em
+FROM public.ocorrencias_crimes AS oc
+INNER JOIN public.informacoes_arquivo AS ia
+    ON ia.id = oc.arquivo_id
+WHERE ia.periodo_dados IS NOT NULL
+  AND BTRIM(ia.periodo_dados) <> '';
+
+REVOKE ALL ON public.vw_ocorrencias_publicadas FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.vw_ocorrencias_publicadas TO service_role;
 ```
 
 ---

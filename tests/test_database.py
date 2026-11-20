@@ -354,6 +354,49 @@ def test_deve_registrar_log_de_erro_quando_operacao_falhar(banco_local, caplog):
     assert any(record.levelname == "ERROR" for record in caplog.records)
 
 
+@pytest.mark.parametrize(
+    "operacao_esperada,chamada",
+    [
+        (
+            "consulta",
+            lambda cli: consultar_registros(tabela="ocorrencias_crimes", cliente=cli),
+        ),
+        (
+            "inserção",
+            lambda cli: inserir_registros(
+                tabela="historico_ingestoes", dados={"status": "SUCESSO"}, cliente=cli
+            ),
+        ),
+        (
+            "atualização",
+            lambda cli: atualizar_registro(
+                tabela="historico_ingestoes",
+                id_registro=1,
+                novos_dados={"status": "SUCESSO"},
+                cliente=cli,
+            ),
+        ),
+    ],
+)
+def test_deve_incluir_operacao_e_mensagem_da_excecao_no_log_de_erro(
+    caplog, operacao_esperada, chamada
+):
+    """Valida que falhas de consulta, inserção e atualização logam a operação e o detalhe da Exception."""
+    mensagem_erro = "violates check constraint simulada"
+    cliente_falso = MagicMock()
+    cliente_falso.table.side_effect = RuntimeError(mensagem_erro)
+
+    with caplog.at_level(logging.ERROR):
+        with pytest.raises(ErroOperacaoBanco):
+            chamada(cliente_falso)
+
+    mensagens_log = [record.getMessage() for record in caplog.records if record.levelname == "ERROR"]
+    assert any(
+        operacao_esperada in msg and mensagem_erro in msg
+        for msg in mensagens_log
+    )
+
+
 # ============================================================================
 # 8. TESTES DE VERSIONAMENTO DE SÉRIES (serie e ultimo_mes)
 # ============================================================================

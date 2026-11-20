@@ -68,7 +68,7 @@ def validar_conexao(cliente: Optional[Client] = None) -> bool:
         logger.info("Conexão com o banco de dados validada com sucesso")
         return True
     except Exception as e:
-        logger.error("Falha ao validar conexão com o banco de dados")
+        logger.error("Falha ao validar conexão com o banco de dados erro=%s", e)
         raise ErroConexaoBanco("Falha na comunicação com o banco de dados.") from e
 
 
@@ -141,7 +141,11 @@ def consultar_registros(
         )
         return dados
     except Exception as e:
-        logger.error("Erro ao consultar registros tabela=%s", tabela)
+        logger.error(
+            "Erro na operação de consulta tabela=%s erro=%s",
+            tabela,
+            e,
+        )
         raise ErroOperacaoBanco("consulta", tabela) from e
 
 
@@ -187,7 +191,11 @@ def inserir_registros(
         )
         return inseridos
     except Exception as e:
-        logger.error("Erro ao inserir registros tabela=%s", tabela)
+        logger.error(
+            "Erro na operação de inserção tabela=%s erro=%s",
+            tabela,
+            e,
+        )
         raise ErroOperacaoBanco("insercao", tabela) from e
 
 
@@ -243,9 +251,10 @@ def atualizar_registro(
         return atualizados
     except Exception as e:
         logger.error(
-            "Erro ao atualizar registro tabela=%s id=%s",
+            "Erro na operação de atualização tabela=%s id=%s erro=%s",
             tabela,
             id_registro,
+            e,
         )
         raise ErroOperacaoBanco("atualizacao", tabela) from e
 
@@ -288,7 +297,11 @@ def excluir_arquivo(id_arquivo:int, cliente: Optional[Client] = None) -> list[Di
             logger.info("O registro de id=%s foi removido CASCADE removeu ocorrências associadas", id_arquivo)
         return removidos
     except Exception as e:
-        logger.error("Erro ao excluir arquivo id=%s", id_arquivo)
+        logger.error(
+            "Erro na operação de exclusão tabela=informacoes_arquivo id=%s erro=%s",
+            id_arquivo,
+            e,
+        )
         raise ErroOperacaoBanco("exclusao", "informacoes_arquivo") from e
 
 
@@ -322,7 +335,11 @@ def contar_ocorrencias_por_arquivo(arquivo_id:int, cliente: Optional[Client] = N
             .execute()
         )
     except Exception as e:
-        logger.error("Erro ao contar ocorrências para arquivo_id=%s", arquivo_id)
+        logger.error(
+            "Erro na operação de contagem tabela=ocorrencias_crimes arquivo_id=%s erro=%s",
+            arquivo_id,
+            e,
+        )
         raise ErroOperacaoBanco("contagem", "ocorrencias_crimes") from e
 
     if resposta.count is None:

@@ -285,8 +285,8 @@ def excluir_arquivo(id_arquivo:int, cliente: Optional[Client] = None) -> list[Di
         if not removidos:
             logger.warning("Nenhum registro encontrado para o id=%s",id_arquivo)
         else:
-            logger.info("O registro de id=%s foi removido CASCADE removeu ocorências associadas", id_arquivo)
+            logger.info("O registro de id=%s foi removido CASCADE removeu ocorrências associadas", id_arquivo)
         return removidos
     except Exception as e:
-        logger.error("Erro ao excluir arquivo")
+        logger.error("Erro ao excluir arquivo id=%s", id_arquivo)
         raise ErroOperacaoBanco("exclusao", "informacoes_arquivo") from e

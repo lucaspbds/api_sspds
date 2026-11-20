@@ -546,3 +546,107 @@ def test_deve_lancar_erro_operacao_banco_quando_count_retornar_none(caplog):
     assert contexto.value.tabela == "ocorrencias_crimes"
     assert "não retornou a contagem" in str(contexto.value)
     assert any(record.levelname == "ERROR" for record in caplog.records)
+
+
+# ============================================================================
+# 10. TESTES DA VIEW (vw_ocorrencias_publicadas)
+# ============================================================================
+@pytest.mark.database
+def test_view_deve_retornar_ocorrencias_com_periodo_dados_preenchido(banco_local):
+    """Valida que a view exibe ocorrências de arquivos publicados e apenas colunas de ocorrencias_crimes."""
+    hash_unico = hashlib.sha256(str(uuid.uuid4()).encode()).hexdigest()
+    id_arquivo = None
+    try:
+        arquivo = inserir_registros(
+            tabela="informacoes_arquivo",
+            dados={
+                "nome_arquivo": "teste_view_publicado.xlsx",
+                "url_download": "https://exemplo.sspds.ce.gov.br/view_publicado.xlsx",
+                "hash_sha256": hash_unico,
+                "tipo_crime": "cvli",
+                "periodo_dados": "2026-01 a 2026-10",
+            },
+            cliente=banco_local,
+        )
+        id_arquivo = arquivo[0]["id"]
+
+        inserir_registros(
+            tabela="ocorrencias_crimes",
+            dados={
+                "arquivo_id": id_arquivo,
+                "tipo_crime": "cvli",
+                "municipio": "Fortaleza",
+                "data_fato": "2026-04-15",
+            },
+            cliente=banco_local,
+        )
+
+        registros = consultar_registros(
+            tabela="vw_ocorrencias_publicadas",
+            filtros={"arquivo_id": id_arquivo},
+            cliente=banco_local,
+        )
+
+        assert len(registros) == 1
+        assert registros[0]["municipio"] == "Fortaleza"
+        assert "hash_sha256" not in registros[0]
+        assert "periodo_dados" not in registros[0]
+    finally:
+        if id_arquivo is not None:
+            excluir_arquivo(id_arquivo=id_arquivo, cliente=banco_local)
+
+
+@pytest.mark.database
+@pytest.mark.parametrize("periodo_nao_preenchido", [None, "", "   "])
+def test_view_deve_ocultar_ocorrencias_sem_periodo_e_exibir_apos_publicacao(
+    banco_local, periodo_nao_preenchido
+):
+    """Valida o ciclo completo: oculta quando periodo_dados é NULL/vazio e exibe após UPDATE."""
+    hash_unico = hashlib.sha256(str(uuid.uuid4()).encode()).hexdigest()
+    id_arquivo = None
+    try:
+        arquivo = inserir_registros(
+            tabela="informacoes_arquivo",
+            dados={
+                "nome_arquivo": "teste_view_em_carga.xlsx",
+                "url_download": "https://exemplo.sspds.ce.gov.br/view_em_carga.xlsx",
+                "hash_sha256": hash_unico,
+                "tipo_crime": "cvli",
+                "periodo_dados": periodo_nao_preenchido,
+            },
+            cliente=banco_local,
+        )
+        id_arquivo = arquivo[0]["id"]
+
+        inserir_registros(
+            tabela="ocorrencias_crimes",
+            dados={
+                "arquivo_id": id_arquivo,
+                "tipo_crime": "cvli",
+                "municipio": "Caucaia",
+                "data_fato": "2026-04-20",
+            },
+            cliente=banco_local,
+        )
+
+        # 1. Existe na tabela bruta, mas NÃO aparece na view enquanto periodo_dados não for preenchido
+        assert len(consultar_registros("ocorrencias_crimes", filtros={"arquivo_id": id_arquivo}, cliente=banco_local)) == 1
+        assert consultar_registros("vw_ocorrencias_publicadas", filtros={"arquivo_id": id_arquivo}, cliente=banco_local) == []
+
+        # 2. Simula o passo final do pipeline: preenche periodo_dados -> passa a aparecer na view!
+        atualizar_registro(
+            tabela="informacoes_arquivo",
+            id_registro=id_arquivo,
+            novos_dados={"periodo_dados": "2026"},
+            cliente=banco_local,
+        )
+        publicados = consultar_registros(
+            tabela="vw_ocorrencias_publicadas",
+            filtros={"arquivo_id": id_arquivo},
+            cliente=banco_local,
+        )
+        assert len(publicados) == 1
+        assert publicados[0]["municipio"] == "Caucaia"
+    finally:
+        if id_arquivo is not None:
+            excluir_arquivo(id_arquivo=id_arquivo, cliente=banco_local)

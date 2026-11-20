@@ -290,3 +290,49 @@ def excluir_arquivo(id_arquivo:int, cliente: Optional[Client] = None) -> list[Di
     except Exception as e:
         logger.error("Erro ao excluir arquivo id=%s", id_arquivo)
         raise ErroOperacaoBanco("exclusao", "informacoes_arquivo") from e
+
+
+def contar_ocorrencias_por_arquivo(arquivo_id:int, cliente: Optional[Client] = None) -> int:
+    """
+    Conta o número de ocorrências vinculadas a um arquivo específico na tabela 'ocorrencias_crimes'.
+
+    Args:
+        arquivo_id (int): Identificador único do arquivo para o qual as ocorrências serão contadas.
+        cliente (Optional[Client]): Instância opcional do cliente Supabase.
+            Caso omitido, um novo cliente será instanciado automaticamente.
+
+    Returns:
+        int: Número de ocorrências associadas ao arquivo especificado.
+
+    Raises:
+        ValueError: Se 'arquivo_id' não for um inteiro válido ou for menor
+            ou igual a zero.
+        ErroOperacaoBanco: Se ocorrer falha de comunicação ou consulta ao Supabase.
+    """
+    if isinstance(arquivo_id, bool) or not isinstance(arquivo_id, int) or arquivo_id <= 0:
+        logger.error("arquivo_id inválido para contagem")
+        raise ValueError("O arquivo_id deve ser um inteiro maior que 0")
+    
+    db = cliente or criar_cliente_supabase()
+    try:
+        resposta = (
+            db.table("ocorrencias_crimes")
+            .select("id", count="exact", head=True)
+            .eq("arquivo_id", arquivo_id)
+            .execute()
+        )
+    except Exception as e:
+        logger.error("Erro ao contar ocorrências para arquivo_id=%s", arquivo_id)
+        raise ErroOperacaoBanco("contagem", "ocorrencias_crimes") from e
+
+    if resposta.count is None:
+        logger.error("Contagem retornou None para arquivo_id=%s", arquivo_id)
+        raise ErroOperacaoBanco(
+            "contagem",
+            "ocorrencias_crimes",
+            "O banco não retornou a contagem de registros.",
+        )
+
+    total = int(resposta.count)
+    logger.info("Contagem de ocorrências para arquivo_id=%s: %s", arquivo_id, total)
+    return total

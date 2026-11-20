@@ -446,3 +446,13 @@ Módulo principal responsável pelas operações de conexão e persistência no 
 - **Exceções:**
   - `ValueError`: Se `id_arquivo` não for um inteiro válido ou for menor ou igual a zero.
   - `ErroOperacaoBanco`: Se ocorrer falha de integridade, permissão ou comunicação durante a exclusão no Supabase.
+
+#### `contar_ocorrencias_por_arquivo(arquivo_id: int, cliente: Optional[Client] = None) -> int`
+- **Descrição:** Conta a quantidade exata de ocorrências vinculadas a um arquivo específico na tabela `ocorrencias_crimes`, utilizando `select("id", count="exact", head=True)` para evitar o tráfego desnecessário de registros no corpo HTTP.
+- **Parâmetros:**
+  - `arquivo_id` (`int`): Identificador único do arquivo cujas ocorrências serão contadas (inteiro maior que zero).
+  - `cliente` (`Optional[Client]`): Instância opcional do cliente Supabase.
+- **Retorno:** `int` — Total de ocorrências vinculadas ao `arquivo_id` (retorna `0` caso não existam ocorrências para o ID).
+- **Exceções:**
+  - `ValueError`: Se `arquivo_id` não for um inteiro válido ou for menor ou igual a zero.
+  - `ErroOperacaoBanco`: Se ocorrer falha de comunicação/consulta ao Supabase ou se o banco retornar `count=None`.

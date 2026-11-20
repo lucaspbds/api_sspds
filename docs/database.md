@@ -427,3 +427,12 @@ Módulo principal responsável pelas operações de conexão e persistência no 
 - **Exceções:**
   - `ValueError`: Se o nome da tabela for vazio ou se `novos_dados` estiver vazio.
   - `ErroOperacaoBanco`: Se ocorrer falha durante a atualização no Supabase.
+#### `excluir_arquivo(id_arquivo: int, cliente: Optional[Client] = None) -> List[Dict[str, Any]]`
+- **Descrição:** Realiza a exclusão (`DELETE`) de um registro da tabela `informacoes_arquivo` a partir do seu ID. A operação é idempotente (retorna `[]` com log `WARNING` caso o ID não exista) e remove automaticamente as ocorrências vinculadas em `ocorrencias_crimes` via `ON DELETE CASCADE`.
+- **Parâmetros:**
+  - `id_arquivo` (`int`): Identificador único do arquivo a ser excluído (inteiro maior que zero).
+  - `cliente` (`Optional[Client]`): Instância opcional do cliente Supabase.
+- **Retorno:** `List[Dict[str, Any]]` — Lista contendo o registro excluído ou lista vazia caso o ID não exista.
+- **Exceções:**
+  - `ValueError`: Se `id_arquivo` não for um inteiro válido ou for menor ou igual a zero.
+  - `ErroOperacaoBanco`: Se ocorrer falha de integridade, permissão ou comunicação durante a exclusão no Supabase.

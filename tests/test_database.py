@@ -1,5 +1,7 @@
+import hashlib
 import logging
 import uuid
+from unittest.mock import MagicMock
 import pytest
 
 from database.config import get_variavel_ambiente
@@ -10,6 +12,7 @@ from database.exceptions import (
 from database.repository import (
     atualizar_registro,
     consultar_registros,
+    excluir_arquivo,
     inserir_registros,
     validar_conexao,
 )
@@ -55,8 +58,43 @@ def test_deve_consultar_ocorrencia_com_idade_nao_informada(banco_local):
     assert any(r["vitima_idade"] is None for r in registros)
 
 
+@pytest.fixture
+def ocorrencia_agosto_2026(banco_local):
+    """Cria arquivo e ocorrência temporários em 2026-08-12 e remove via CASCADE ao final."""
+    hash_unico = hashlib.sha256(str(uuid.uuid4()).encode()).hexdigest()
+    arquivo = inserir_registros(
+        tabela="informacoes_arquivo",
+        dados={
+            "nome_arquivo": "teste_intervalo_datas_2026.xlsx",
+            "url_download": "https://exemplo.sspds.ce.gov.br/teste_datas.xlsx",
+            "hash_sha256": hash_unico,
+            "tipo_crime": "cvli",
+        },
+        cliente=banco_local,
+    )
+    id_arquivo = arquivo[0]["id"]
+
+    ocorrencia = inserir_registros(
+        tabela="ocorrencias_crimes",
+        dados={
+            "arquivo_id": id_arquivo,
+            "tipo_crime": "cvli",
+            "municipio": "Fortaleza",
+            "data_fato": "2026-08-12",
+        },
+        cliente=banco_local,
+    )
+
+    yield ocorrencia[0]
+
+    # Teardown garantido: remove o arquivo e, por ON DELETE CASCADE, a ocorrência criada
+    excluir_arquivo(id_arquivo=id_arquivo, cliente=banco_local)
+
+
 @pytest.mark.database
-def test_deve_consultar_ocorrencias_com_filtro_de_intervalo_de_datas(banco_local):
+def test_deve_consultar_ocorrencias_com_filtro_de_intervalo_de_datas(
+    banco_local, ocorrencia_agosto_2026
+):
     """Valida a leitura com filtro por intervalo de datas (coluna_data, data_inicio, data_fim)."""
     registros = consultar_registros(
         tabela="ocorrencias_crimes",
@@ -72,7 +110,9 @@ def test_deve_consultar_ocorrencias_com_filtro_de_intervalo_de_datas(banco_local
 
 
 @pytest.mark.database
-def test_deve_consultar_ocorrencias_combinando_filtros_de_igualdade_e_data(banco_local):
+def test_deve_consultar_ocorrencias_combinando_filtros_de_igualdade_e_data(
+    banco_local, ocorrencia_agosto_2026
+):
     """Valida a combinação de filtro de igualdade com intervalo de data e limite."""
     registros = consultar_registros(
         tabela="ocorrencias_crimes",
@@ -86,7 +126,6 @@ def test_deve_consultar_ocorrencias_combinando_filtros_de_igualdade_e_data(banco
     assert isinstance(registros, list)
     assert len(registros) == 1
     assert registros[0]["municipio"] == "Fortaleza"
-
 
 # ============================================================================
 # 3. TESTES DE INSERÇÃO
@@ -173,7 +212,72 @@ def test_deve_atualizar_status_de_ingestao(banco_local):
 
 
 # ============================================================================
-# 5. TESTES DE TRATAMENTO DE ERRO
+# 5. TESTE DE EXCLUSÃO
+# ============================================================================
+@pytest.mark.database
+def test_deve_excluir_arquivo_e_ocorrencias_em_cascata(banco_local):
+    """Valida a exclusão em informacoes_arquivo e o ON DELETE CASCADE em ocorrencias_crimes."""
+    hash_unico = hashlib.sha256(str(uuid.uuid4()).encode()).hexdigest()
+    arquivo_inserido = inserir_registros(
+        tabela="informacoes_arquivo",
+        dados={
+            "nome_arquivo": "teste_exclusao_cvli.xlsx",
+            "url_download": "https://exemplo.sspds.ce.gov.br/teste_exclusao.xlsx",
+            "hash_sha256": hash_unico,
+            "tipo_crime": "cvli",
+        },
+        cliente=banco_local,
+    )
+    id_arquivo = arquivo_inserido[0]["id"]
+    
+    # Insere uma ocorrência filha vinculada ao arquivo para provar o ON DELETE CASCADE
+    inserir_registros(
+        tabela="ocorrencias_crimes",
+        dados={
+            "arquivo_id": id_arquivo,
+            "tipo_crime": "cvli",
+            "municipio": "Fortaleza",
+            "data_fato": "2026-01-10",
+        },
+        cliente=banco_local,
+    )
+    removidos = excluir_arquivo(id_arquivo=id_arquivo, cliente=banco_local)
+    assert len(removidos) == 1
+    assert removidos[0]["id"] == id_arquivo
+    
+    # Confirma no banco que o arquivo e a ocorrência vinculada não existem mais
+    assert consultar_registros("informacoes_arquivo", filtros={"id": id_arquivo}, cliente=banco_local) == []
+    assert consultar_registros("ocorrencias_crimes", filtros={"arquivo_id": id_arquivo}, cliente=banco_local) == []
+
+
+@pytest.mark.database
+def test_deve_retornar_lista_vazia_quando_arquivo_nao_existir(banco_local, caplog):
+    """Valida a idempotência da exclusão e o log WARNING quando o ID não existe no banco."""
+    with caplog.at_level(logging.WARNING):
+        removidos = excluir_arquivo(id_arquivo=999999999, cliente=banco_local)
+    assert removidos == []
+    assert any(record.levelname == "WARNING" for record in caplog.records)
+
+
+@pytest.mark.parametrize("id_invalido", [0, -1, -50, "10", None, True, False, 1.5])
+def test_deve_lancar_value_error_quando_id_arquivo_for_invalido(id_invalido):
+    """Valida que IDs inválidos são rejeitados antes mesmo de tentar conectar ao banco."""
+    with pytest.raises(ValueError):
+        excluir_arquivo(id_arquivo=id_invalido)
+
+
+def test_deve_lancar_erro_operacao_banco_quando_exclusao_falhar(caplog):
+    """Valida o tratamento de erro e o log ERROR quando o Supabase falha durante a exclusão."""
+    cliente_falso = MagicMock()
+    cliente_falso.table.side_effect = RuntimeError("Falha simulada de conexão")
+    with caplog.at_level(logging.ERROR):
+        with pytest.raises(ErroOperacaoBanco) as contexto:
+            excluir_arquivo(id_arquivo=1, cliente=cliente_falso)
+    assert contexto.value.operacao == "exclusao"
+    assert contexto.value.tabela == "informacoes_arquivo"
+    assert any(record.levelname == "ERROR" for record in caplog.records)
+# ============================================================================
+# 6. TESTES DE TRATAMENTO DE ERRO
 # ============================================================================
 def test_deve_lancar_erro_quando_variavel_ambiente_nao_existir(monkeypatch):
     """Valida se VariavelAmbienteNaoEncontrada é lançada quando falta variável."""
@@ -235,7 +339,7 @@ def test_deve_rejeitar_client_type_invalido_em_api_request_logs(banco_local):
 
 
 # ============================================================================
-# 6. TESTE DE LOGS DO SISTEMA
+# 7. TESTE DE LOGS DO SISTEMA
 # ============================================================================
 @pytest.mark.database
 def test_deve_registrar_log_de_erro_quando_operacao_falhar(banco_local, caplog):

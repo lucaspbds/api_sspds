@@ -248,3 +248,45 @@ def atualizar_registro(
             id_registro,
         )
         raise ErroOperacaoBanco("atualizacao", tabela) from e
+
+
+def excluir_arquivo(id_arquivo:int, cliente: Optional[Client] = None) -> list[Dict[str,Any]]:
+    """
+    Exclui um registro da tabela 'informacoes_arquivo' a partir do seu ID.
+
+    A exclusão é idempotente: caso nenhum registro seja encontrado para o ID
+    informado, retorna uma lista vazia sem lançar exceção. Quando o registro
+    existe, todas as ocorrências vinculadas em 'ocorrencias_crimes' também são
+    removidas automaticamente pelo banco (ON DELETE CASCADE).
+
+    Args:
+        id_arquivo (int): Identificador único do arquivo a ser excluído
+            (deve ser um número inteiro maior que zero).
+        cliente (Optional[Client]): Instância opcional do cliente Supabase.
+            Caso omitido, um novo cliente será instanciado automaticamente.
+
+    Returns:
+        List[Dict[str, Any]]: Lista contendo o registro excluído ou lista
+            vazia caso o ID não exista na tabela.
+
+    Raises:
+        ValueError: Se 'id_arquivo' não for um inteiro válido ou for menor
+            ou igual a zero.
+        ErroOperacaoBanco: Se ocorrer falha de integridade, permissão ou
+            comunicação ao excluir o registro no Supabase.
+    """
+    if isinstance(id_arquivo, bool) or not isinstance(id_arquivo, int) or id_arquivo <= 0:
+        logger.error("id_arquivo inválido")
+        raise ValueError("O id_arquivo deve ser um inteiro maior que 0")
+    db = cliente or criar_cliente_supabase()
+    try:
+        resposta = db.table("informacoes_arquivo").delete().eq("id", id_arquivo).execute()
+        removidos = resposta.data or []
+        if not removidos:
+            logger.warning("Nenhum registro encontrado para o id=%s",id_arquivo)
+        else:
+            logger.info("O registro de id=%s foi removido CASCADE removeu ocorrências associadas", id_arquivo)
+        return removidos
+    except Exception as e:
+        logger.error("Erro ao excluir arquivo id=%s", id_arquivo)
+        raise ErroOperacaoBanco("exclusao", "informacoes_arquivo") from e

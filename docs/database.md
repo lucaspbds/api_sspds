@@ -39,6 +39,8 @@ erDiagram
         varchar hash_sha256 UK
         varchar tipo_crime
         varchar periodo_dados
+        varchar serie
+        varchar ultimo_mes
         bigint tamanho_bytes
         timestamp data_coleta
         timestamp atualizado_em
@@ -114,6 +116,8 @@ Catálogo dos arquivos brutos baixados da SSPDS/CE. Garante transparência públ
 | `hash_sha256` | `VARCHAR(64)` | Não | - | Hash criptográfico único (SHA-256) do arquivo. |
 | `tipo_crime` | `VARCHAR(100)` | Não | - | Tipo de indicador (ex: `furto`, `cvli`, `entorpecentes`). |
 | `periodo_dados` | `VARCHAR(50)` | Sim | `NULL` | Ano ou período coberto pela planilha (ex: `2025`, `2026`). |
+| `serie` | `VARCHAR(20)` | Não | `'corrente'` | Série do arquivo: `'corrente'` ou `'historica'`. |
+| `ultimo_mes` | `VARCHAR(2)` | Sim | `NULL` | Último mês disponível na série no formato `MM` (ex: `'10'` = Outubro). |
 | `tamanho_bytes` | `BIGINT` | Sim | `NULL` | Tamanho do arquivo em bytes. |
 | `data_coleta` | `TIMESTAMPTZ` | Não | `now()` | Data/hora do download. |
 | `atualizado_em` | `TIMESTAMPTZ` | Não | `now()` | Data/hora da última alteração no registro. |
@@ -241,6 +245,12 @@ CREATE TABLE public.informacoes_arquivo (
     hash_sha256 VARCHAR(64) NOT NULL UNIQUE,
     tipo_crime VARCHAR(100) NOT NULL,
     periodo_dados VARCHAR(50),
+    serie VARCHAR(20) NOT NULL DEFAULT 'corrente'
+      CONSTRAINT informacoes_arquivo_serie_check
+      CHECK (serie IN ('corrente', 'historica')),
+    ultimo_mes VARCHAR(2)
+      CONSTRAINT informacoes_arquivo_ultimo_mes_check
+      CHECK (ultimo_mes IN ('01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12')),
     tamanho_bytes BIGINT,
     data_coleta TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),

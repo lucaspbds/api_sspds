@@ -5,6 +5,8 @@ from database.exceptions import ErroOperacaoBanco
 from database.repository import inserir_registros
 from database.repository import atualizar_registro
 from database.repository import criar_cliente_supabase
+from database.repository import excluir_arquivo
+from database.repository import consultar_registros
 from .config import get_variavel_ambiente
 from .helpers import recebeInteiro
 
@@ -47,7 +49,7 @@ def deletar_informacoes_arquivo(id: int, cliente=None) -> None:
     if cliente is None:
         cliente = criar_cliente_supabase()
     try:
-        cliente.table("informacoes_arquivo").delete().eq("id", id).execute()
+        excluir_arquivo(id=id, cliente=cliente)
         logger.info("Registro de arquivo removido (CASCADE nas ocorrências) id=%s", id)
     except Exception as erro:
         logger.error("Erro ao remover registro de arquivo id=%s", id)
@@ -63,7 +65,6 @@ def inserir_ocorrencias_crimes(dados: list[dict[str, Any]], tamanho_lote=tamanho
 
 def listar_informacoes_arquivo(cliente=None) -> list[dict[str, Any]]:
     """Obtém a fotografia dos metadados para uma execução de ingestão."""
-    from database.repository import consultar_registros
     if cliente is None:
         cliente = criar_cliente_supabase()
     return consultar_registros(

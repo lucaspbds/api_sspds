@@ -445,3 +445,33 @@ def test_deve_rejeitar_ultimo_mes_invalido_em_informacoes_arquivo(banco_local, m
             },
             cliente=banco_local,
         )
+
+
+@pytest.mark.database
+def test_deve_aceitar_status_parcial_em_historico_ingestoes(banco_local):
+    """Valida que o status 'PARCIAL' é aceito pela constraint CHECK de historico_ingestoes."""
+    id_criado = None
+    try:
+        inseridos = inserir_registros(
+            tabela="historico_ingestoes",
+            dados={"status": "PARCIAL", "qtd_arquivos_processados": 1, "qtd_arquivos_falhas": 1},
+            cliente=banco_local,
+        )
+        assert len(inseridos) == 1
+        id_criado = inseridos[0]["id"]
+        assert inseridos[0]["status"] == "PARCIAL"
+    finally:
+        if id_criado is not None:
+            banco_local.table("historico_ingestoes").delete().eq("id", id_criado).execute()
+
+
+@pytest.mark.database
+@pytest.mark.parametrize("status_invalido", ["ERRO", "CONCLUIDO", "sucesso", ""])
+def test_deve_rejeitar_status_invalido_em_historico_ingestoes(banco_local, status_invalido):
+    """Valida se a constraint CHECK bloqueia valores fora dos 4 status permitidos."""
+    with pytest.raises(ErroOperacaoBanco):
+        inserir_registros(
+            tabela="historico_ingestoes",
+            dados={"status": status_invalido},
+            cliente=banco_local,
+        )

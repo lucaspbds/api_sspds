@@ -3,6 +3,7 @@ import logging
 import uuid
 from unittest.mock import MagicMock
 import pytest
+import hashlib
 
 from database.config import get_variavel_ambiente
 from database.exceptions import (
@@ -351,3 +352,96 @@ def test_deve_registrar_log_de_erro_quando_operacao_falhar(banco_local, caplog):
             pass
 
     assert any(record.levelname == "ERROR" for record in caplog.records)
+
+
+# ============================================================================
+# 7. TESTES DE VERSIONAMENTO DE SÉRIES (serie e ultimo_mes)
+# ============================================================================
+@pytest.mark.database
+def test_deve_inserir_arquivo_com_serie_e_ultimo_mes_validos(banco_local):
+    """Valida inserção em informacoes_arquivo com serie='historica' e ultimo_mes='10'."""
+    hash_unico = hashlib.sha256(str(uuid.uuid4()).encode()).hexdigest()
+    id_criado = None
+    try:
+        inseridos = inserir_registros(
+            tabela="informacoes_arquivo",
+            dados={
+                "nome_arquivo": "teste_serie_historica.xlsx",
+                "url_download": "https://exemplo.sspds.ce.gov.br/historica.xlsx",
+                "hash_sha256": hash_unico,
+                "tipo_crime": "cvli",
+                "serie": "historica",
+                "ultimo_mes": "10",
+            },
+            cliente=banco_local,
+        )
+        assert len(inseridos) == 1
+        id_criado = inseridos[0]["id"]
+        assert inseridos[0]["serie"] == "historica"
+        assert inseridos[0]["ultimo_mes"] == "10"
+    finally:
+        if id_criado is not None:
+            banco_local.table("informacoes_arquivo").delete().eq("id", id_criado).execute()
+
+
+@pytest.mark.database
+def test_deve_usar_serie_corrente_como_padrao_quando_omitida(banco_local):
+    """Valida que serie assume 'corrente' e ultimo_mes aceita NULL quando omitidos."""
+    hash_unico = hashlib.sha256(str(uuid.uuid4()).encode()).hexdigest()
+    id_criado = None
+    try:
+        inseridos = inserir_registros(
+            tabela="informacoes_arquivo",
+            dados={
+                "nome_arquivo": "teste_serie_default.xlsx",
+                "url_download": "https://exemplo.sspds.ce.gov.br/corrente.xlsx",
+                "hash_sha256": hash_unico,
+                "tipo_crime": "cvli",
+            },
+            cliente=banco_local,
+        )
+        assert len(inseridos) == 1
+        id_criado = inseridos[0]["id"]
+        assert inseridos[0]["serie"] == "corrente"
+        assert inseridos[0]["ultimo_mes"] is None
+    finally:
+        if id_criado is not None:
+            banco_local.table("informacoes_arquivo").delete().eq("id", id_criado).execute()
+
+
+@pytest.mark.database
+@pytest.mark.parametrize("serie_invalida", ["mensal", "histórica", "CORRENTE", ""])
+def test_deve_rejeitar_serie_invalida_em_informacoes_arquivo(banco_local, serie_invalida):
+    """Valida se o CHECK do banco bloqueia valores fora de ('corrente', 'historica')."""
+    hash_unico = hashlib.sha256(str(uuid.uuid4()).encode()).hexdigest()
+    with pytest.raises(ErroOperacaoBanco):
+        inserir_registros(
+            tabela="informacoes_arquivo",
+            dados={
+                "nome_arquivo": "teste_serie_invalida.xlsx",
+                "url_download": "https://exemplo.sspds.ce.gov.br/invalida.xlsx",
+                "hash_sha256": hash_unico,
+                "tipo_crime": "cvli",
+                "serie": serie_invalida,
+            },
+            cliente=banco_local,
+        )
+
+
+@pytest.mark.database
+@pytest.mark.parametrize("mes_invalido", ["00", "1", "13", "99", "AB"])
+def test_deve_rejeitar_ultimo_mes_invalido_em_informacoes_arquivo(banco_local, mes_invalido):
+    """Valida se o CHECK do banco exige formato MM válido ('01' a '12')."""
+    hash_unico = hashlib.sha256(str(uuid.uuid4()).encode()).hexdigest()
+    with pytest.raises(ErroOperacaoBanco):
+        inserir_registros(
+            tabela="informacoes_arquivo",
+            dados={
+                "nome_arquivo": "teste_mes_invalido.xlsx",
+                "url_download": "https://exemplo.sspds.ce.gov.br/mes_invalido.xlsx",
+                "hash_sha256": hash_unico,
+                "tipo_crime": "cvli",
+                "ultimo_mes": mes_invalido,
+            },
+            cliente=banco_local,
+        )

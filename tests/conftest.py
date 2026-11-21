@@ -15,6 +15,7 @@ class AmbienteFake:
     """Estado e registro de eventos compartilhados pelos fakes."""
 
     def __init__(self):
+        self.df_data = pd.DataFrame([{"Data": "2024-01-01"}, {"Data": "2024-05-01"}])
         self.eventos = []
         self.urls = []
         self.validacoes = {}              # nome do arquivo -> campos a sobrescrever
@@ -185,7 +186,7 @@ def banco_local():
 @pytest.fixture
 def ambiente(monkeypatch):
     amb = AmbienteFake()
-    registrar = lambda nome, dados=None: amb.eventos.append((nome, dados))  # noqa: E731
+    registrar = lambda nome, dados=None: amb.eventos.append((nome, dados))
 
     def validar_pasta_temporaria(*args, **kwargs):
         if amb.erro_validar_pasta:
@@ -204,7 +205,7 @@ def ambiente(monkeypatch):
             raise amb.erros_download[nome]
         return Path("tmp") / nome
 
-    def validate_xlsx_file(caminho):
+    def validate_xlsx_file(caminho, registros=None, cliente=None):
         nome = Path(caminho).name
         base = {
             "path": f"tmp/{nome}", "name": nome, "sha256": f"hash-{nome}",
@@ -254,7 +255,7 @@ def ambiente(monkeypatch):
         "crawler": crawler,
         "download_xlsx": download_xlsx,
         "validate_xlsx_file": validate_xlsx_file,
-        "ler_planilha": lambda caminho: "df-fake",
+        "ler_planilha": lambda caminho: amb.df_data.copy(),
         "normalizer": normalizer,
         "inserir_historico_ingestoes": inserir_historico_ingestoes,
         "atualizar_historico_ingestoes": atualizar_historico_ingestoes,
@@ -262,6 +263,9 @@ def ambiente(monkeypatch):
         "atualizar_informacoes_arquivo": atualizar_informacoes_arquivo,
         "deletar_informacoes_arquivo": deletar_informacoes_arquivo,
         "inserir_ocorrencias_crimes": inserir_ocorrencias_crimes,
+        "listar_informacoes_arquivo": lambda cliente=None: [],
+        "excluir_arquivos_por_ids": lambda ids, cliente=None:(registrar("arquivos_excluidos", list(ids)) if ids else None),
+        "contar_ocorrencias_por_arquivo": lambda arquivo_id, cliente=None: len(amb.registros),
     }
     for nome, funcao in fakes.items():
         monkeypatch.setattr(modulo_pipeline, nome, funcao)

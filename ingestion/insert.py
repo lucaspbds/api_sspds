@@ -5,6 +5,9 @@ from database.exceptions import ErroOperacaoBanco
 from database.repository import inserir_registros
 from database.repository import atualizar_registro
 from database.repository import criar_cliente_supabase
+from database.repository import excluir_arquivo
+from database.repository import consultar_registros
+from database.repository import contar_ocorrencias_por_arquivo as contar_ocorrencias
 from .config import get_variavel_ambiente
 from .helpers import recebeInteiro
 
@@ -47,7 +50,7 @@ def deletar_informacoes_arquivo(id: int, cliente=None) -> None:
     if cliente is None:
         cliente = criar_cliente_supabase()
     try:
-        cliente.table("informacoes_arquivo").delete().eq("id", id).execute()
+        excluir_arquivo(id=id, cliente=cliente)
         logger.info("Registro de arquivo removido (CASCADE nas ocorrências) id=%s", id)
     except Exception as erro:
         logger.error("Erro ao remover registro de arquivo id=%s", id)
@@ -59,3 +62,30 @@ def inserir_ocorrencias_crimes(dados: list[dict[str, Any]], tamanho_lote=tamanho
     for i in range(0, len(dados), tamanho_lote):
         lote = dados[i:i + tamanho_lote]
         inserir_registros(tabela="ocorrencias_crimes", dados=lote, cliente=cliente)
+
+
+def listar_informacoes_arquivo(cliente=None) -> list[dict[str, Any]]:
+    """Obtém a fotografia dos metadados para uma execução de ingestão."""
+    if cliente is None:
+        cliente = criar_cliente_supabase()
+    return consultar_registros(
+        tabela="informacoes_arquivo",
+        colunas="id,nome_arquivo,hash_sha256,tipo_crime,serie,periodo_dados,ultimo_mes,data_coleta,atualizado_em,ingestao_id",
+        cliente=cliente,
+    )
+
+
+def excluir_arquivos_por_ids(ids: list[int], cliente=None) -> None:
+    """Exclui metadados por ID; o CASCADE remove as ocorrências vinculadas."""
+    if not ids:
+        return
+    for arquivo_id in sorted(set(ids)):
+        deletar_informacoes_arquivo(id=arquivo_id, cliente=cliente)
+
+
+def contar_ocorrencias_por_arquivo(arquivo_id: int, cliente=None) -> int:
+    """Conta as ocorrências vinculadas a um arquivo para validar a carga."""
+    if cliente is None:
+        cliente = criar_cliente_supabase()
+    resposta = contar_ocorrencias(arquivo_id=arquivo_id, cliente=cliente)
+    return resposta

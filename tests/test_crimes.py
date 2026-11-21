@@ -32,3 +32,15 @@ def test_listar_cvli_com_limite_invalido_texto():
     detalhes = response.json()["detail"]
     # Valida se o erro gerado é de falha de conversão para inteiro
     assert any(err["type"] == "int_parsing" for err in detalhes)
+
+def test_listar_crimes_intervalo_datas_invalido():
+    """Testa se data_inicio posterior a data_fim retorna 422."""
+    response = client.get("/crimes/?data_inicio=2026-12-31&data_fim=2026-01-01")
+    assert response.status_code == 422
+
+
+def test_rotas_especificas_respondem():
+    """Verifica se as demais rotas específicas respondem sem erro interno (500)."""
+    for rota in ("/crimes/preconceito", "/crimes/operacionais", "/crimes/vitimas"):
+        response = client.get(rota)
+        assert response.status_code in (200, 404)

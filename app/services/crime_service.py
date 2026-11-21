@@ -13,7 +13,8 @@ from database.repository import consultar_registros, criar_cliente_supabase
 
 logger = logging.getLogger("app.services.crime_service")
 
-TABELA_OCORRENCIAS = "ocorrencias_crimes"
+VIEW_OCORRENCIAS_PUBLICADAS = "vw_ocorrencias_publicadas"
+TABELA_OCORRENCIAS = VIEW_OCORRENCIAS_PUBLICADAS
 COLUNA_DATA = "data_fato"
 
 # Valores **exatos** da coluna `tipo_crime` (os mesmos gerados por

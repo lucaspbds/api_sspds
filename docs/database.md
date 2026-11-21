@@ -96,7 +96,7 @@ Registra cada ciclo de execução do crawler/pipeline, garantindo auditoria e mo
 | `id` | `BIGINT` | Não | Auto-incremental | Chave primária da execução. |
 | `data_inicio` | `TIMESTAMPTZ` | Não | `now()` | Data/hora de início da execução do pipeline. |
 | `data_fim` | `TIMESTAMPTZ` | Sim | `NULL` | Data/hora de conclusão da rotina. |
-| `status` | `VARCHAR(50)` | Não | `'EM_ANDAMENTO'` | Status atual: `'EM_ANDAMENTO'`, `'SUCESSO'` ou `'FALHA'`. |
+| `status` | `VARCHAR(50)` | Não | `'EM_ANDAMENTO'` | Status atual: `'EM_ANDAMENTO'`, `'SUCESSO'`, `'PARCIAL'` (ocorreram falhas durante a ingestão, mas pelo menos um arquivo foi carregado com sucesso ou reconhecido como já ingerido) ou `'FALHA'`. |
 | `qtd_arquivos_encontrados` | `INTEGER` | Não | `0` | Quantidade total de links encontrados na SSPDS. |
 | `qtd_arquivos_processados` | `INTEGER` | Não | `0` | Quantidade de planilhas lidas e importadas. |
 | `qtd_arquivos_falhas` | `INTEGER` | Não | `0` | Quantidade de arquivos com erro de parsing/download. |
@@ -115,7 +115,7 @@ Catálogo dos arquivos brutos baixados da SSPDS/CE. Garante transparência públ
 | `url_download` | `TEXT` | Não | - | URL pública oficial de origem na SSPDS. |
 | `hash_sha256` | `VARCHAR(64)` | Não | - | Hash criptográfico único (SHA-256) do arquivo. |
 | `tipo_crime` | `VARCHAR(100)` | Não | - | Tipo de indicador (ex: `furto`, `cvli`, `entorpecentes`). |
-| `periodo_dados` | `VARCHAR(50)` | Sim | `NULL` | Ano ou período coberto pela planilha (ex: `2025`, `2026`). |
+| `periodo_dados` | `VARCHAR(50)` | Sim | `NULL` | Ano ou período coberto pela planilha (ex: `2025`, `2026`). Também indica se o processamento do arquivo foi concluído com sucesso: valor preenchido (diferente de `NULL`/`None`) indica ingestão concluída e dados processados; `NULL`/`None` indica ingestão não concluída. |
 | `serie` | `VARCHAR(20)` | Não | `'corrente'` | Série do arquivo: `'corrente'` ou `'historica'`. |
 | `ultimo_mes` | `VARCHAR(2)` | Sim | `NULL` | Último mês disponível na série no formato `MM` (ex: `'10'` = Outubro). |
 | `tamanho_bytes` | `BIGINT` | Sim | `NULL` | Tamanho do arquivo em bytes. |
@@ -234,7 +234,16 @@ CREATE TABLE public.historico_ingestoes (
     id BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
     data_inicio TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     data_fim TIMESTAMPTZ,
-    status VARCHAR(50) NOT NULL DEFAULT 'EM_ANDAMENTO',
+    status VARCHAR(50) NOT NULL DEFAULT 'EM_ANDAMENTO'
+    CONSTRAINT historico_ingestoes_status_check
+    CHECK (
+        status IN (
+            'EM_ANDAMENTO',
+            'SUCESSO',
+            'PARCIAL',
+            'FALHA'
+        )
+    ),
     qtd_arquivos_encontrados INTEGER NOT NULL DEFAULT 0,
     qtd_arquivos_processados INTEGER NOT NULL DEFAULT 0,
     qtd_arquivos_falhas INTEGER NOT NULL DEFAULT 0,

@@ -40,7 +40,7 @@ erDiagram
         varchar tipo_crime
         varchar periodo_dados
         varchar serie
-        varchar ultimo_mes
+        int ultimo_mes
         bigint tamanho_bytes
         timestamp data_coleta
         timestamp atualizado_em
@@ -96,7 +96,7 @@ Registra cada ciclo de execução do crawler/pipeline, garantindo auditoria e mo
 | `id` | `BIGINT` | Não | Auto-incremental | Chave primária da execução. |
 | `data_inicio` | `TIMESTAMPTZ` | Não | `now()` | Data/hora de início da execução do pipeline. |
 | `data_fim` | `TIMESTAMPTZ` | Sim | `NULL` | Data/hora de conclusão da rotina. |
-| `status` | `VARCHAR(50)` | Não | `'EM_ANDAMENTO'` | Status atual: `'EM_ANDAMENTO'`, `'SUCESSO'` ou `'FALHA'`. |
+| `status` | `VARCHAR(50)` | Não | `'EM_ANDAMENTO'` | Status atual: `'EM_ANDAMENTO'`, `'SUCESSO'`, `'PARCIAL'` (ocorreram falhas durante a ingestão, mas pelo menos um arquivo foi carregado com sucesso ou reconhecido como já ingerido) ou `'FALHA'`. |
 | `qtd_arquivos_encontrados` | `INTEGER` | Não | `0` | Quantidade total de links encontrados na SSPDS. |
 | `qtd_arquivos_processados` | `INTEGER` | Não | `0` | Quantidade de planilhas lidas e importadas. |
 | `qtd_arquivos_falhas` | `INTEGER` | Não | `0` | Quantidade de arquivos com erro de parsing/download. |
@@ -115,9 +115,9 @@ Catálogo dos arquivos brutos baixados da SSPDS/CE. Garante transparência públ
 | `url_download` | `TEXT` | Não | - | URL pública oficial de origem na SSPDS. |
 | `hash_sha256` | `VARCHAR(64)` | Não | - | Hash criptográfico único (SHA-256) do arquivo. |
 | `tipo_crime` | `VARCHAR(100)` | Não | - | Tipo de indicador (ex: `furto`, `cvli`, `entorpecentes`). |
-| `periodo_dados` | `VARCHAR(50)` | Sim | `NULL` | Ano ou período coberto pela planilha (ex: `2025`, `2026`). |
+| `periodo_dados` | `VARCHAR(50)` | Sim | `NULL` | Ano ou período coberto pela planilha (ex: `2025`, `2026`). Também indica se o processamento do arquivo foi concluído com sucesso: valor preenchido (diferente de `NULL`/`None`) indica ingestão concluída e dados processados; `NULL`/`None` indica ingestão não concluída. |
 | `serie` | `VARCHAR(20)` | Não | `'corrente'` | Série do arquivo: `'corrente'` ou `'historica'`. |
-| `ultimo_mes` | `VARCHAR(2)` | Sim | `NULL` | Último mês disponível na série no formato `MM` (ex: `'10'` = Outubro). |
+| `ultimo_mes` | `INTEGER` | Sim | `NULL` | Último mês disponível na série, de `1` a `12` (ex: `10` = Outubro). |
 | `tamanho_bytes` | `BIGINT` | Sim | `NULL` | Tamanho do arquivo em bytes. |
 | `data_coleta` | `TIMESTAMPTZ` | Não | `now()` | Data/hora do download. |
 | `atualizado_em` | `TIMESTAMPTZ` | Não | `now()` | Data/hora da última alteração no registro. |
@@ -171,6 +171,12 @@ Armazena o resumo estruturado de cada requisição HTTP processada pela API Fast
 | `client_type` | `VARCHAR(20)` | Não | `'unknown'` | Classificação da origem: `'public'`, `'team'`, `'monitoring'` ou `'unknown'`. |
 
 ---
+
+### 3.5. View: `vw_ocorrencias_publicadas`
+View de leitura utilizada pela API FastAPI para consultar apenas ocorrências cujos arquivos já concluíram a carga e possuem `periodo_dados` preenchido na tabela `informacoes_arquivo` (`periodo_dados IS NOT NULL AND BTRIM(periodo_dados) <> ''`).
+
+- **Colunas expostas:** Exatamente as mesmas 22 colunas da tabela `ocorrencias_crimes`.
+- **Segurança:** Criada com `WITH (security_invoker = true)` para respeitar o RLS das tabelas base, com acesso bloqueado para `PUBLIC`, `anon` e `authenticated` e permissão exclusiva de `SELECT` para `service_role`.
 
 ## 4. Decisões Arquiteturais e Justificativas
 
@@ -228,7 +234,16 @@ CREATE TABLE public.historico_ingestoes (
     id BIGINT GENERATED ALWAYS AS IDENTITY NOT NULL,
     data_inicio TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     data_fim TIMESTAMPTZ,
-    status VARCHAR(50) NOT NULL DEFAULT 'EM_ANDAMENTO',
+    status VARCHAR(50) NOT NULL DEFAULT 'EM_ANDAMENTO'
+    CONSTRAINT historico_ingestoes_status_check
+    CHECK (
+        status IN (
+            'EM_ANDAMENTO',
+            'SUCESSO',
+            'PARCIAL',
+            'FALHA'
+        )
+    ),
     qtd_arquivos_encontrados INTEGER NOT NULL DEFAULT 0,
     qtd_arquivos_processados INTEGER NOT NULL DEFAULT 0,
     qtd_arquivos_falhas INTEGER NOT NULL DEFAULT 0,
@@ -248,9 +263,9 @@ CREATE TABLE public.informacoes_arquivo (
     serie VARCHAR(20) NOT NULL DEFAULT 'corrente'
       CONSTRAINT informacoes_arquivo_serie_check
       CHECK (serie IN ('corrente', 'historica')),
-    ultimo_mes VARCHAR(2)
+    ultimo_mes INTEGER
       CONSTRAINT informacoes_arquivo_ultimo_mes_check
-      CHECK (ultimo_mes IN ('01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12')),
+      CHECK (ultimo_mes BETWEEN 1 AND 12),
     tamanho_bytes BIGINT,
     data_coleta TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -333,6 +348,41 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.informacoes_arquivo TO service_ro
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.ocorrencias_crimes TO service_role;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.api_request_logs TO service_role;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO service_role;
+
+-- 8. View de Consumo da API (Ocorrências de Arquivos Publicados)
+CREATE OR REPLACE VIEW public.vw_ocorrencias_publicadas
+WITH (security_invoker = true) AS
+SELECT
+    oc.id,
+    oc.arquivo_id,
+    oc.tipo_crime,
+    oc.municipio,
+    oc.ais,
+    oc.local_fato,
+    oc.data_fato,
+    oc.hora_fato,
+    oc.dia_semana,
+    oc.st_dia_semana_divergente,
+    oc.st_idade_invalida,
+    oc.natureza,
+    oc.meio_empregado,
+    oc.vitima_genero,
+    oc.vitima_idade,
+    oc.vitima_escolaridade,
+    oc.vitima_raca,
+    oc.vitima_orientacao_sexual,
+    oc.quantidade_armas,
+    oc.tipo_entorpecente,
+    oc.peso_entorpecente_kg,
+    oc.criado_em
+FROM public.ocorrencias_crimes AS oc
+INNER JOIN public.informacoes_arquivo AS ia
+    ON ia.id = oc.arquivo_id
+WHERE ia.periodo_dados IS NOT NULL
+  AND BTRIM(ia.periodo_dados) <> '';
+
+REVOKE ALL ON public.vw_ocorrencias_publicadas FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.vw_ocorrencias_publicadas TO service_role;
 ```
 
 ---
@@ -446,3 +496,13 @@ Módulo principal responsável pelas operações de conexão e persistência no 
 - **Exceções:**
   - `ValueError`: Se `id_arquivo` não for um inteiro válido ou for menor ou igual a zero.
   - `ErroOperacaoBanco`: Se ocorrer falha de integridade, permissão ou comunicação durante a exclusão no Supabase.
+
+#### `contar_ocorrencias_por_arquivo(arquivo_id: int, cliente: Optional[Client] = None) -> int`
+- **Descrição:** Conta a quantidade exata de ocorrências vinculadas a um arquivo específico na tabela `ocorrencias_crimes`, utilizando `select("id", count="exact", head=True)` para evitar o tráfego desnecessário de registros no corpo HTTP.
+- **Parâmetros:**
+  - `arquivo_id` (`int`): Identificador único do arquivo cujas ocorrências serão contadas (inteiro maior que zero).
+  - `cliente` (`Optional[Client]`): Instância opcional do cliente Supabase.
+- **Retorno:** `int` — Total de ocorrências vinculadas ao `arquivo_id` (retorna `0` caso não existam ocorrências para o ID).
+- **Exceções:**
+  - `ValueError`: Se `arquivo_id` não for um inteiro válido ou for menor ou igual a zero.
+  - `ErroOperacaoBanco`: Se ocorrer falha de comunicação/consulta ao Supabase ou se o banco retornar `count=None`.

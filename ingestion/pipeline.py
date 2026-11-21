@@ -151,7 +151,7 @@ def carregar_arquivo(
             "hash_sha256": classificado["sha256"],
             "tipo_crime": classificado["tipo_ocorrencia"],
             "serie": classificado["serie"],
-            "ultimo_mes": classificado.get("ultimo_mes"),
+            "ultimo_mes": int(classificado.get("ultimo_mes") or 0),
             "periodo_dados": None,
             "tamanho_bytes": classificado["size_bytes"],
             "data_coleta": data_coleta,

@@ -7,6 +7,7 @@ from database.repository import atualizar_registro
 from database.repository import criar_cliente_supabase
 from database.repository import excluir_arquivo
 from database.repository import consultar_registros
+from database.repository import contar_ocorrencias_por_arquivo as contar_ocorrencias
 from .config import get_variavel_ambiente
 from .helpers import recebeInteiro
 
@@ -86,7 +87,5 @@ def contar_ocorrencias_por_arquivo(arquivo_id: int, cliente=None) -> int:
     """Conta as ocorrências vinculadas a um arquivo para validar a carga."""
     if cliente is None:
         cliente = criar_cliente_supabase()
-    resposta = cliente.table("ocorrencias_crimes").select("id", count="exact").eq(
-        "arquivo_id", arquivo_id
-    ).limit(1).execute()
-    return int(getattr(resposta, "count", 0) or 0)
+    resposta = contar_ocorrencias(arquivo_id=arquivo_id, cliente=cliente)
+    return resposta

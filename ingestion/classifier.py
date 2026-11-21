@@ -33,7 +33,7 @@ REGRAS_TIPO_OCORRENCIA: tuple[tuple[str, tuple[str, ...]], ...] = (
     ),
     (
         "APREENSÃO DE ENTORPECENTES",
-        ("apreensao de entorpecentes", "entorpecentes", "apreensao de drogas"),
+        ("apreensao de entorpecentes", "entorpecente","entorpecentes", "apreensao de drogas"),
     ),
     (
         "HOMOFOBIA E TRANSFOBIA",

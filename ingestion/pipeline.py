@@ -144,6 +144,10 @@ def carregar_arquivo(
     arquivo como totalmente carregado. Qualquer falha antes disso desfaz a
     carga (``desfazer_carga``).
     """
+    ultimo_mes = classificado.get("ultimo_mes")
+    if ultimo_mes is not None:
+        ultimo_mes = int(ultimo_mes)
+        
     arquivo_id = inserir_informacoes_arquivo(
         dados={
             "nome_arquivo": classificado["name"],
@@ -151,7 +155,7 @@ def carregar_arquivo(
             "hash_sha256": classificado["sha256"],
             "tipo_crime": classificado["tipo_ocorrencia"],
             "serie": classificado["serie"],
-            "ultimo_mes": int(classificado.get("ultimo_mes") or 0),
+            "ultimo_mes": ultimo_mes,
             "periodo_dados": None,
             "tamanho_bytes": classificado["size_bytes"],
             "data_coleta": data_coleta,

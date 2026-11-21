@@ -6,6 +6,7 @@ from typing import TypedDict
 from .exception import DatabaseLookupError, FileValidationError
 from .config import get_variavel_ambiente
 from .helpers import avaliar_expressao_inteira
+from .insert import deletar_informacoes_arquivo
 from database.repository import consultar_registros
 from logging_system.logging_config import configure_logging
 
@@ -25,6 +26,7 @@ class ValidatedFile(TypedDict):
     size_bytes: int
     name_exists: bool
     id_registro: int | None
+    registro_hash: dict | None
 
 
 def calculate_sha256(file_path: str | Path) -> str:
@@ -52,32 +54,39 @@ def calculate_sha256(file_path: str | Path) -> str:
     return digest.hexdigest()
 
 
-def check_hash_in_database(file_hash: str) -> bool:
-    """Retorna True se o hash já estiver **totalmente ingerido** no banco.
+def check_hash_in_database(
+    file_hash: str, registros: list[dict] | None = None, cliente=None
+) -> bool:
+    """Retorna True somente para hash publicado e limpa tentativas incompletas.
 
-    Um registro só conta se ``periodo_dados`` estiver preenchido. O pipeline
-    grava esse campo como último passo da carga; um registro com
-    ``periodo_dados`` nulo é uma carga interrompida (ex.: processo morto no
-    meio) e o arquivo deve ser reprocessado.
-
-    Raises:
-        DatabaseLookupError: se o hash for vazio ou a consulta falhar.
+    A limpeza pressupõe execução única do workflow, para não remover carga ativa.
     """
     if not file_hash:
         raise DatabaseLookupError("O hash consultado não pode ser vazio.")
-
     try:
-        registros = consultar_registros(
-            tabela="informacoes_arquivo",
-            filtros={"hash_sha256": file_hash},
-        )
+        if registros is None:
+            correspondentes = consultar_registros(
+                tabela="informacoes_arquivo",
+                filtros={"hash_sha256": file_hash},
+            )
+        else:
+            correspondentes = [r for r in registros if r.get("hash_sha256") == file_hash]
+        if any(r.get("periodo_dados") is not None and str(r.get("periodo_dados")).strip() for r in correspondentes):
+            return True
+        # Um hash incompleto só pode ser removido depois que o pipeline garantiu
+        # exclusividade de execução (concurrency do Actions). Atualize também a
+        # fotografia em memória para não reutilizar um órfão já apagado.
+        for registro in correspondentes:
+            if registro.get("periodo_dados") is None:
+                deletar_informacoes_arquivo(id=registro["id"], cliente=cliente)
+                if isinstance(registros, list):
+                    registros[:] = [r for r in registros if r.get("id") != registro["id"]]
+        return False
     except DatabaseLookupError:
         raise
     except Exception as exc:
-        logger.exception("Falha ao consultar o hash no banco de dados")
-        raise DatabaseLookupError("Falha ao consultar o hash no banco de dados.") from exc
-
-    return any(registro.get("periodo_dados") for registro in registros)
+        logger.exception("Falha ao verificar/limpar hash no banco de dados")
+        raise DatabaseLookupError("Falha ao verificar o hash no banco de dados.") from exc
 
 
 def check_filename_in_database(file_name: str) -> list:
@@ -109,7 +118,9 @@ def check_filename_in_database(file_name: str) -> list:
     
 
 
-def validate_xlsx_file(file_path: str | Path) -> ValidatedFile:
+def validate_xlsx_file(
+    file_path: str | Path, registros: list[dict] | None = None, cliente=None
+) -> ValidatedFile:
     """Valida um único arquivo XLSX e retorna seus metadados.
 
     O arquivo é verificado, seu SHA-256 é calculado e o banco é consultado
@@ -138,7 +149,7 @@ def validate_xlsx_file(file_path: str | Path) -> ValidatedFile:
         raise FileValidationError(f"O arquivo não possui extensão XLSX: {path}")
 
     file_hash = calculate_sha256(path)
-    already_exists = check_hash_in_database(file_hash)
+    already_exists = check_hash_in_database(file_hash, registros=registros, cliente=cliente)
     id_registro, name_exists = check_filename_in_database(path.name)
 
     try:
@@ -156,7 +167,8 @@ def validate_xlsx_file(file_path: str | Path) -> ValidatedFile:
         "is_new": not already_exists,
         "size_bytes": file_size,
         "name_exists": name_exists,
-        "id_registro": id_registro
+        "id_registro": id_registro,
+        "registro_hash": next((r for r in (registros or []) if r.get("hash_sha256") == file_hash), None)
     }
     logger.info(
         "Validação concluída para %s (novo=%s, nome_existente=%s)",

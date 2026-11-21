@@ -1,7 +1,7 @@
 from typing import Dict
 from fastapi import FastAPI
 from app.exception import registrar_exception_handlers
-from app.routers import crimes
+from app.routers import crimes, historico_ingestoes
 
 app = FastAPI(
     title="API Pública de Dados de Segurança - SSPDS/CE",
@@ -12,8 +12,9 @@ app = FastAPI(
 # Registra os tratamentos de erro
 registrar_exception_handlers(app)
 
-# Incluindo o roteador de crimes
+# Incluindo o roteador de crimes e do histórico de ingestões
 app.include_router(crimes.router)
+app.include_router(historico_ingestoes.router)  
 
 
 @app.get("/", summary="Raiz da aplicação", tags=["Status"])

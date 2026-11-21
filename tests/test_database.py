@@ -414,14 +414,14 @@ def test_deve_inserir_arquivo_com_serie_e_ultimo_mes_validos(banco_local):
                 "hash_sha256": hash_unico,
                 "tipo_crime": "cvli",
                 "serie": "historica",
-                "ultimo_mes": "10",
+                "ultimo_mes": 10,
             },
             cliente=banco_local,
         )
         assert len(inseridos) == 1
         id_criado = inseridos[0]["id"]
         assert inseridos[0]["serie"] == "historica"
-        assert inseridos[0]["ultimo_mes"] == "10"
+        assert inseridos[0]["ultimo_mes"] == 10
     finally:
         if id_criado is not None:
             banco_local.table("informacoes_arquivo").delete().eq("id", id_criado).execute()
@@ -472,9 +472,9 @@ def test_deve_rejeitar_serie_invalida_em_informacoes_arquivo(banco_local, serie_
 
 
 @pytest.mark.database
-@pytest.mark.parametrize("mes_invalido", ["00", "1", "13", "99", "AB"])
+@pytest.mark.parametrize("mes_invalido", [0, -1, 13, 99, "AB"])
 def test_deve_rejeitar_ultimo_mes_invalido_em_informacoes_arquivo(banco_local, mes_invalido):
-    """Valida se o CHECK do banco exige formato MM válido ('01' a '12')."""
+    """Valida se o CHECK e o tipo INTEGER bloqueiam meses fora do intervalo 1..12."""
     hash_unico = hashlib.sha256(str(uuid.uuid4()).encode()).hexdigest()
     with pytest.raises(ErroOperacaoBanco):
         inserir_registros(

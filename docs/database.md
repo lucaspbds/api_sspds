@@ -40,7 +40,7 @@ erDiagram
         varchar tipo_crime
         varchar periodo_dados
         varchar serie
-        varchar ultimo_mes
+        int ultimo_mes
         bigint tamanho_bytes
         timestamp data_coleta
         timestamp atualizado_em
@@ -117,7 +117,7 @@ Catálogo dos arquivos brutos baixados da SSPDS/CE. Garante transparência públ
 | `tipo_crime` | `VARCHAR(100)` | Não | - | Tipo de indicador (ex: `furto`, `cvli`, `entorpecentes`). |
 | `periodo_dados` | `VARCHAR(50)` | Sim | `NULL` | Ano ou período coberto pela planilha (ex: `2025`, `2026`). Também indica se o processamento do arquivo foi concluído com sucesso: valor preenchido (diferente de `NULL`/`None`) indica ingestão concluída e dados processados; `NULL`/`None` indica ingestão não concluída. |
 | `serie` | `VARCHAR(20)` | Não | `'corrente'` | Série do arquivo: `'corrente'` ou `'historica'`. |
-| `ultimo_mes` | `VARCHAR(2)` | Sim | `NULL` | Último mês disponível na série no formato `MM` (ex: `'10'` = Outubro). |
+| `ultimo_mes` | `INTEGER` | Sim | `NULL` | Último mês disponível na série, de `1` a `12` (ex: `10` = Outubro). |
 | `tamanho_bytes` | `BIGINT` | Sim | `NULL` | Tamanho do arquivo em bytes. |
 | `data_coleta` | `TIMESTAMPTZ` | Não | `now()` | Data/hora do download. |
 | `atualizado_em` | `TIMESTAMPTZ` | Não | `now()` | Data/hora da última alteração no registro. |
@@ -263,9 +263,9 @@ CREATE TABLE public.informacoes_arquivo (
     serie VARCHAR(20) NOT NULL DEFAULT 'corrente'
       CONSTRAINT informacoes_arquivo_serie_check
       CHECK (serie IN ('corrente', 'historica')),
-    ultimo_mes VARCHAR(2)
+    ultimo_mes INTEGER
       CONSTRAINT informacoes_arquivo_ultimo_mes_check
-      CHECK (ultimo_mes IN ('01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12')),
+      CHECK (ultimo_mes BETWEEN 1 AND 12),
     tamanho_bytes BIGINT,
     data_coleta TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),

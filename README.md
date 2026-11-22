@@ -94,6 +94,10 @@ flowchart LR
 > [!WARNING]
 > A consulta da API usa a tabela `ocorrencias_crimes`. O banco também define a view `vw_ocorrencias_publicadas` (apenas arquivos com `periodo_dados` preenchido), mas o código da API ainda não a utiliza. Por isso, enquanto uma carga está em andamento, ocorrências de um arquivo ainda não publicado podem aparecer nas respostas. A ingestão diária roda de madrugada (03:00 UTC) para reduzir essa janela.
 
+> [!WARNING]
+> **A cobertura dos dados em produção está temporariamente incompleta.** Na execução de ingestão observada em 22/11/2026, 3 dos 26 arquivos encontrados falharam e não foram carregados. Os recortes/temas correspondentes podem, portanto, não aparecer nas consultas da API. O problema está relacionado à padronização e à qualidade dos arquivos publicados pela SSPDS/CE, e está documentado em [`docs/ingestion.md`](docs/ingestion.md#81-incompletude-atual-dos-dados-em-produção).
+
+
 ---
 
 ## 3. Stack tecnológica

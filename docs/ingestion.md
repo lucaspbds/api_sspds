@@ -604,13 +604,11 @@ Assim as requisições HTTPS são feitas **sem desabilitar a validação** (`ver
 > Pontos observados no código atual. Não foram corrigidos pela documentação.
 
 1. **Sem transação real.** A consistência vem de compensação (`periodo_dados` nulo + exclusão em cascata), não de uma transação do banco. Uma queda do processo entre a inserção e a publicação deixa um registro incompleto, tratado na próxima execução (hash órfão ou purga após 6 h).
-2. **`ultimo_mes` de arquivos históricos.** `carregar_arquivo` grava `int(ultimo_mes or 0)`, ou seja, `0` quando o valor é `None` (série histórica). O DDL de [`database.md`](database.md) tem `CHECK (ultimo_mes BETWEEN 1 AND 12)`, e `tests/test_database.py` confirma que `0` é rejeitado. Se o banco tiver essa constraint, a carga de planilhas históricas falhará na inserção de `informacoes_arquivo`. Convém confirmar o comportamento real e enviar `NULL` nesse caso.
-3. **A API ainda lê `ocorrencias_crimes`.** `app/services/crime_service.py` consulta a tabela, não a view `vw_ocorrencias_publicadas`. Durante uma carga em andamento, ocorrências de arquivos ainda não publicados podem ser visíveis na API.
-4. **Avisos não alteram o status.** Um arquivo em `AVISO` não conta como falha nem como processado; o status pode ser `SUCESSO` com `mensagem_erro` preenchida.
-5. **Sem cache HTTP.** `TEMP_PATH` é apagado ao final, então todas as planilhas são baixadas de novo a cada execução (hoje, diariamente).
-6. **Purga e remoção de órfãos assumem execução única.** Garantido pelo `concurrency` do workflow; execuções manuais paralelas fora do Actions não são protegidas.
-7. **Inspeção lê a planilha inteira antes da decisão.** O arquivo é lido uma vez para inspeção e o mesmo DataFrame é reutilizado na normalização; planilhas ignoradas por hash não chegam a ser lidas.
-8. **`INSERT_CHUNK_SIZE` aceita só inteiro simples** (usa `recebeInteiro`); expressões aritméticas valem apenas em `CHUNK_SIZE` e `HASH_CHUNK_SIZE`.
+2. **Avisos não alteram o status.** Um arquivo em `AVISO` não conta como falha nem como processado; o status pode ser `SUCESSO` com `mensagem_erro` preenchida.
+3. **Sem cache HTTP.** `TEMP_PATH` é apagado ao final, então todas as planilhas são baixadas de novo a cada execução (hoje, diariamente).
+4. **Purga e remoção de órfãos assumem execução única.** Garantido pelo `concurrency` do workflow; execuções manuais paralelas fora do Actions não são protegidas.
+5. **Inspeção lê a planilha inteira antes da decisão.** O arquivo é lido uma vez para inspeção e o mesmo DataFrame é reutilizado na normalização; planilhas ignoradas por hash não chegam a ser lidas.
+6. **`INSERT_CHUNK_SIZE` aceita só inteiro simples** (usa `recebeInteiro`); expressões aritméticas valem apenas em `CHUNK_SIZE` e `HASH_CHUNK_SIZE`.
 
 ---
 

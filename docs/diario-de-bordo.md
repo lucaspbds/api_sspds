@@ -212,3 +212,44 @@ David — implementar o downloader e normalizar os dados para o modelo do banco.
 **Evidência coletada:** sem evidência nova nesta semana.
 
 **Próxima semana:** David — processar todos os dados históricos da SSPDS e automatizar ingestão periódica; Nikelly — implementar registro de acessos da API, integrar API ao banco e adicionar rotas de filtragem (por AIS, município, crime, data); Abimael — criar post de divulgação do Marco 2 no LinkedIn.
+
+---
+### Semana de 14/11
+
+**Quem trabalhou e quanto:** David Lucas Pereira Braga dos Santos — 4h; Nikelly Santiago da Silva — 8h; Carlos Abimael Oliveira do Nascimento — 2h
+
+**O que foi feito:**
+
+- Expansão do serviço de ingestão para processar todas as planilhas da série histórica da SSPDS/CE (incluindo variável `url_sspds_historico`), correção de timeout no banco e de tipagem da idade; validação de segurança do `TEMP_PATH` antes da limpeza de temporários, parser seguro para expressões aritméticas (sem `eval`), função de remoção de registros antigos, validação de arquivos totalmente processados, ajustes na orquestração do pipeline, atualização de testes e documentação (David).
+- Integração definitiva da API ao banco Supabase (`CrimeService` consultando diretamente o banco em vez de arquivo local); implementação da rota unificada `/crimes/` com filtros combináveis (município, tipo de crime, AIS, natureza, meio empregado, perfil da vítima, dia da semana, tipo de entorpecente, período `data_inicio`/`data_fim` e `limit`), refatoração das rotas especializadas (`/crimes/cvli`, `/crimes/vitimas`, `/crimes/preconceito`, `/crimes/operacionais`), padronização dos schemas Pydantic (inclusão de `st_dia_semana_divergente` e `st_idade_invalida` e remoção de aliases incompatíveis), desacoplamento de configuração/exceções entre `app/` e `database/` e inclusão do link do ReDoc no `README.md` (Nikelly).
+- Implementação do filtro por intervalo de datas (`coluna_data`, `data_inicio` e `data_fim`) em `consultar_registros` no `database/repository.py` e adição dos testes automatizados correspondentes em `tests/test_database.py` (Abimael).
+
+**Obstáculo:** Timeout durante a carga de dados históricos no banco (resolvido com ajuste do cliente/lotes); incompatibilidade de nomes/aliases entre os schemas da API e as colunas reais do PostgreSQL (resolvida na refatoração de `app/schemas/`); necessidade de reforçar a validação de segurança do caminho temporário (`TEMP_PATH`) e de expressões de configuração na ingestão (resolvida nesta semana).
+
+**Contato com o público:** sem contato novo nesta semana (aguardando retorno da SSPDS/SUPESP via e-SIC sobre a notificação de inconsistências enviada em 30/10).
+
+**Evidência coletada:** sem evidência nova arquivada nesta semana.
+
+**Próxima semana:** David — implementar versionamento resiliente das planilhas, reconciliação na transição anual e serialização do workflow no GitHub Actions; Abimael — evoluir o schema e a camada `database/` para o versionamento (colunas `serie`/`ultimo_mes`, view `vw_ocorrencias_publicadas`, exclusão em cascata e contagem de ocorrências); Nikelly — migrar a API para a view publicada, criar endpoint de histórico de ingestões, separar health checks e implementar registro de acessos.
+
+---
+### Semana de 21/11
+
+**Quem trabalhou e quanto:** David Lucas Pereira Braga dos Santos — 6h; Nikelly Santiago da Silva — 2h20; Carlos Abimael Oliveira do Nascimento — 8h
+
+**O que foi feito:**
+
+- Implementação do versionamento resiliente das planilhas (`ingestion/versionamento.py` e `tests/test_versionamento.py`): identidade lógica por `(tipo_crime, serie)`, publicação apenas após conferência integral da contagem de linhas, recuperação de hashes de cargas incompletas, reconciliação segura na transição anual e serialização das execuções no GitHub Actions (`ingestion.yml`); integração às funções `excluir_arquivo` e `contar_ocorrencias_por_arquivo`, ajustes de classificação (`entorpecente`) e `ultimo_mes`, primeira execução em produção no Supabase, documentação da incompletude temporária em `README.md` e `docs/ingestion.md` e elaboração da entrega do Marco 2 (David).
+- Evolução do schema e da camada `database/`: adição das colunas `serie` e `ultimo_mes` (refatorada para `INTEGER` com `CHECK` entre 1 e 12), constraint `CHECK` de `status` em `historico_ingestoes` (incluindo `PARCIAL`), criação da view `vw_ocorrencias_publicadas` (`security_invoker = true`, restrita a `service_role`), implementação de `excluir_arquivo` (idempotente com `ON DELETE CASCADE`) e `contar_ocorrencias_por_arquivo` (`head=True`), propagação do detalhe em `ErroOperacaoBanco`, silenciamento dos loggers `httpx`/`httpcore` para `WARNING` e ampliação da suíte `tests/test_database.py`; arquivamento das evidências do e-SIC, alinhamento de `README.md`, `docs/api.md` e `docs/database.md` ao estado atual da `main` e atualização do diário de bordo (Abimael).
+- Migração do `CrimeService` para consultar a view `vw_ocorrencias_publicadas` (expondo apenas arquivos com carga concluída), criação do endpoint `GET /historico-ingestoes/` com filtros (`status`, `data`, `limit`) e testes em `tests/test_historico_ingestoes.py`, e separação do health check em `/health/live` (liveness) e `/health/ready` (readiness com verificação de conexão ao banco) com testes em `tests/test_health.py` (Nikelly).
+
+**Obstáculo:** Na primeira carga completa em produção (`22/11/2026`, `historico_ingestoes.id = 1`, status `PARCIAL`), 3 dos 26 arquivos da SSPDS/CE falharam por problemas na fonte (`Arma-de-Fogo_Outubro.xlsx` com mês no nome divergindo dos dados; `Salvamento_2022-a-2024.xlsx` e `Incendios_2022-a-2024.xlsx` com cabeçalhos fora do padrão e sem coluna `AIS`) — a limitação foi documentada e formalmente notificada via e-SIC. Além disso, a série histórica completa (2009–2026, ~2,5 milhões de registros + índices) ultrapassou o limite de 500 MB do plano gratuito do Supabase (~531 MB / 106%), exigindo estratégia de otimização/recorte na próxima etapa; o middleware de gravação em `api_request_logs` ficou pendente para a virada do Marco 2 para o Marco 3.
+
+**Contato com o público:** Comunicação institucional com a SSPDS/SUPESP via e-SIC (recebimento da resposta final em 16/11 confirmando correções na fonte e envio de nova notificação de inconsistências em 22/11).
+
+**Evidência coletada:**
+- `docs/evidencias/notificacao-inconsistencia-esic_resposta_16-11.pdf` — resposta final da SUPESP (16/11) confirmando e corrigindo inconsistências de data/dia da semana nas bases de Entorpecentes (fev/2026) e Lei Maria da Penha (jan/2026) e orientando priorizar `data_fato`;
+- `docs/evidencias/e-sic_arquivos_inconsistentes_solicitacao_22-11.pdf` — solicitação ao e-SIC (22/11) notificando divergência de mês em `Arma-de-Fogo_Outubro.xlsx` e colunas divergentes/ausência de `AIS` em Salvamento e Incêndios (2022–2024);
+- `docs/evidencias/historico_ingestoes_rows_22-11.csv` — registro da primeira carga em produção (22/11) evidenciando 23 arquivos processados e 3 falhas.
+
+**Próxima semana:** Nikelly — implementar middleware de registro de acessos em `api_request_logs` (excluindo bots e requisições da equipe via token) e disponibilizar a URL pública da API; Abimael — tratar a otimização/recorte de armazenamento no Supabase Free Tier e divulgar a API + formulário de avaliação no LinkedIn; David — acompanhar o retorno do e-SIC sobre as 3 planilhas fora do padrão e monitorar a ingestão agendada; TODOS — coletar feedbacks externos via formulário e incorporar melhorias para o Marco 3 (27/11).

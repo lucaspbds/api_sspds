@@ -2,7 +2,7 @@
 
 Esta documentação descreve a arquitetura, a estrutura de diretórios modular e os endpoints disponíveis na API de dados de segurança pública do Ceará.
 
-A API é construída com **FastAPI** e lê os dados da tabela `ocorrencias_crimes` do **Supabase** (alimentada pelo serviço de ingestão). A documentação interativa gerada automaticamente fica em `/docs` (Swagger UI) e `/redoc`.
+A API é construída com **FastAPI** e lê os dados publicados pela view `vw_ocorrencias_publicadas` (ocorrências cujos arquivos já tiveram carga concluída) e pela tabela `historico_ingestoes` no **Supabase**. A documentação interativa gerada automaticamente fica em `/docs` (Swagger UI) e `/redoc`.
 
 ## 📁 Estrutura de Diretórios da API
 
@@ -12,28 +12,31 @@ A API segue uma arquitetura orientada a serviços e separação de responsabilid
 api_sspds/
 ├── app/
 │   ├── __init__.py
-│   ├── config.py                 # get_variavel_ambiente (leitura do .env, independente de database/)
+│   ├── config.py                          # get_variavel_ambiente (leitura do .env, independente de database/)
 │   ├── dockerfile
-│   ├── exception.py              # Exceções da API (RecursoNaoEncontrado, VariavelAmbienteNaoEncontrada) e handlers
-│   ├── main.py                   # Instância FastAPI, /, /health
+│   ├── exception.py                       # Exceções da API (RecursoNaoEncontrado, VariavelAmbienteNaoEncontrada) e handlers
+│   ├── main.py                            # Instância FastAPI, /, /health/live, /health/ready
 │   ├── routers/
 │   │   ├── __init__.py
-│   │   └── crimes.py             # Rotas /crimes/*
-│   ├── schemas/ # Serve para serialização, val. de saída e doc. aut.
+│   │   ├── crimes.py                      # Rotas /crimes/*
+│   │   └── historico_ingestoes.py         # Rota /historico-ingestoes/
+│   ├── schemas/                           # Serialização, validação de saída e doc. automática
 │   │   ├── __init__.py
-│   │   ├── base_schema.py        # CrimeBaseSchema (campos comuns)
-│   │   ├── consulta_schema.py    # CrimeGeralResponse (rota geral)
-│   │   ├── operacional_schema.py # OperacionalResponse
-│   │   ├── preconceito_schema.py # PreconceitoResponse
-│   │   └── vitima_schema.py      # CrimeComVitimaResponse, CvliResponse
+│   │   ├── base_schema.py                 # CrimeBaseSchema (campos comuns)
+│   │   ├── consulta_schema.py             # CrimeGeralResponse (rota geral)
+│   │   ├── historico_ingestoes_schema.py  # HistoricoIngestaoResponse
+│   │   ├── operacional_schema.py          # OperacionalResponse
+│   │   ├── preconceito_schema.py          # PreconceitoResponse
+│   │   └── vitima_schema.py               # CrimeComVitimaResponse, CvliResponse
 │   └── services/
 │       ├── __init__.py
-│       └── crime_service.py      # Consultas ao Supabase (filtros, tipos, período)
+│       ├── crime_service.py               # Consultas à view vw_ocorrencias_publicadas
+│       └── historico_ingestoes_service.py # Consultas à tabela historico_ingestoes
 ```
 
 ### Fluxo de uma requisição
 
-`Router` (valida parâmetros) → `CrimeService` (monta a consulta e acessa o Supabase) → `Schema` (valida e serializa a resposta) → JSON.
+`Router` (valida parâmetros) → `Service` (`CrimeService` sobre `vw_ocorrencias_publicadas` ou `HistoricoIngestoesService` sobre `historico_ingestoes`) → `Schema` (valida e serializa a resposta) → JSON.
 
 O `CrimeService` acessa o banco de duas formas:
 
@@ -58,16 +61,21 @@ Erros de banco (`ErroOperacaoBanco`), de conexão (`ErroConexaoBanco`) e de conf
 
 ---
 
-### 2. Verificação de Saúde (Health Check)
+### 2. Verificação de Saúde (Health Checks)
+
+#### 2.1 Liveness Check
 - **Método:** `GET`
-- **Rota:** `/health`
-- **Descrição:** Endpoint destinado a monitorização e validação do estado operacional do contentor/servidor. Indica apenas que o processo da API está no ar; **não** testa a conexão com o banco.
-- **Resposta (Exemplo - `200 OK`):**
-  ```json
-  {
-    "status": "ok"
-  }
-  ```
+- **Rota:** `/health/live`
+- **Descrição:** Verifica apenas se o processo da API está ativo e respondendo; **não** testa a conexão com o banco.
+- **Resposta (`200 OK`):** `{"status": "ok"}`
+
+#### 2.2 Readiness Check
+- **Método:** `GET`
+- **Rota:** `/health/ready`
+- **Descrição:** Verifica se a API está pronta para atender requisições, executando `validar_conexao()` contra o Supabase.
+- **Códigos de Resposta:**
+  - `200 OK`: `{"status": "ready", "database": "ok"}`
+  - `503 Service Unavailable`: `{"detail": "Banco de dados indisponível ou configuração ausente."}` (ou `"Banco de dados indisponível."`)
 
 ---
 
@@ -123,7 +131,7 @@ Erros de banco (`ErroOperacaoBanco`), de conexão (`ErroConexaoBanco`) e de conf
 - **Método:** `GET`
 - **Rota:** `/crimes/cvli`
 - **Parâmetros de Query:**
-  - `limit` (opcional, `integer`): Limita o número de registos retornados. Caso omitido, retorna a base completa.
+  - `limit` (opcional, `integer`): Limita o número de registos retornados. Caso omitido, retorna todos os registros até o teto do Supabase/PostgREST (1000 linhas por requisição; veja [Observações e limitações](#observações-e-limitações)).
 - **Tipo(s) de crime:** `CRIMES VIOLENTOS LETAIS E INTENCIONAIS - CVLI`
 - **Response Model:** `List[CvliResponse]`
 - **Descrição:** Lista ocorrências específicas de CVLI com detalhamento de perfil de vítima e natureza.
@@ -183,6 +191,24 @@ Erros de banco (`ErroOperacaoBanco`), de conexão (`ErroConexaoBanco`) e de conf
 
 ---
 
+### 8. Histórico de Ingestões
+- **Método:** `GET`
+- **Rota:** `/historico-ingestoes/`
+- **Parâmetros de Query (todos opcionais e combináveis):**
+  - `status` (`string`): Filtra pelo status da execução (`EM_ANDAMENTO`, `SUCESSO`, `PARCIAL` ou `FALHA`; normalizado para caixa alta).
+  - `data` (`date`, `AAAA-MM-DD`): Filtra os registros criados naquele dia (`criado_em` em UTC, de `00:00:00` a `23:59:59.999999`).
+  - `limit` (`integer`, `> 0`): Número máximo de registros retornados.
+- **Response Model:** `List[HistoricoIngestaoResponse]`
+- **Descrição:** Consulta os registros de execução da tabela `historico_ingestoes`, permitindo acompanhar o status, contadores de arquivos e eventuais mensagens de erro/aviso da ingestão.
+- **Exemplo:** `GET /historico-ingestoes/?status=SUCESSO&data=2026-11-21&limit=5`
+- **Códigos de Resposta:**
+  - `200 OK`: Registros encontrados e retornados com sucesso.
+  - `404 Not Found`: Nenhum registro de histórico de ingestão encontrado com os filtros fornecidos.
+  - `422 Unprocessable Content`: `status` fora dos valores permitidos, `data` fora do formato `AAAA-MM-DD` ou `limit <= 0`.
+  - `500` / `503`: Falha no banco de dados ou na configuração.
+
+---
+
 ## 📦 Schemas de Resposta
 
 Os schemas das rotas específicas herdam de `CrimeBaseSchema`.
@@ -194,7 +220,8 @@ Os schemas das rotas específicas herdam de `CrimeBaseSchema`.
 | `CrimeComVitimaResponse` | Base + `vitima_genero`, `vitima_idade`, `vitima_escolaridade`, `vitima_raca` | `/crimes/vitimas` |
 | `CvliResponse` | `CrimeComVitimaResponse` + `natureza`, `meio_empregado` | `/crimes/cvli` |
 | `PreconceitoResponse` | Base + `natureza`, `local_fato`, `vitima_genero`, `vitima_orientacao_sexual`, `vitima_idade`, `vitima_escolaridade`, `vitima_raca` | `/crimes/preconceito` |
-| `CrimeGeralResponse` | Todos os campos da tabela `ocorrencias_crimes` (lista acima) | `/crimes/` |
+| `CrimeGeralResponse` | Todos os 22 campos da view `vw_ocorrencias_publicadas` (lista acima) | `/crimes/` |
+| `HistoricoIngestaoResponse` | `id`, `data_inicio`, `data_fim`, `status`, `qtd_arquivos_encontrados`, `qtd_arquivos_processados`, `qtd_arquivos_falhas`, `mensagem_erro`, `criado_em` | `/historico-ingestoes/` |
 
 Em `CrimeComVitimaResponse` (e, por herança, `CvliResponse`), um `vitima_idade` textual como `"Não Informada"` é convertido em `null` em vez de provocar erro de validação.
 
@@ -224,8 +251,10 @@ Para listar os valores presentes no banco: `SELECT DISTINCT tipo_crime FROM ocor
 | :--- | :--- | :--- |
 | Rotas sem resultado (`HTTPException`) | `404` | `{"detail": "Nenhum dado de CVLI encontrado."}` |
 | `data_inicio` posterior a `data_fim` | `422` | `{"detail": "data_inicio não pode ser posterior a data_fim."}` |
+| `status` inválido em `/historico-ingestoes/` | `422` | `{"detail": "Status inválido 'INVALIDO'. Valores permitidos: EM_ANDAMENTO, FALHA, PARCIAL, SUCESSO."}` |
 | Parâmetro inválido (validação) | `422` | `{"erro": "Erro de validação nos parâmetros", "detail": [ { "type": "int_parsing", "loc": ["query", "limit"], "msg": "...", "input": "abc" } ]}` |
 | Banco indisponível (`ErroConexaoBanco`) | `503` | `{"erro": "Erro de Conexão com o Banco", "mensagem": "Não foi possível estabelecer comunicação com o Supabase."}` |
+| Banco indisponível em `/health/ready` (`HTTPException`) | `503` | `{"detail": "Banco de dados indisponível ou configuração ausente."}` |
 | Falha na consulta (`ErroOperacaoBanco`) | `500` | `{"erro": "Erro na Operação do Banco", "mensagem": "Falha ao executar a operação solicitada no Supabase."}` |
 | Variável de ambiente ausente | `500` | `{"erro": "Erro de Configuração", "mensagem": "Uma variável de ambiente obrigatória não foi configurada."}` |
 | Erro inesperado | `500` | `{"erro": "Erro interno no servidor", "mensagem": "Ocorreu um erro inesperado na aplicação."}` |
@@ -238,4 +267,5 @@ Os detalhes técnicos (nome da variável de ambiente, stack trace) são registra
 - A ordem dos registros não é garantida; combinada com `limit`, a seleção pode variar entre chamadas. Ainda não há parâmetro de ordenação.
 - O Supabase/PostgREST pode impor um teto de linhas por requisição (padrão de 1000 no Supabase hospedado, configurável no projeto). Use `limit` e os filtros de período para consultas grandes; ainda não há paginação por `offset`.
 - As variáveis `SUPABASE_URL`, `SUPABASE_KEY` e `LOG_LEVEL` precisam estar definidas no `.env` (o módulo de banco configura os logs ao ser importado).
-- Os testes de `tests/test_crimes.py` consultam o Supabase real; veja o [README](../README.md#65-executar-os-testes).
+- Os testes de `tests/test_crimes.py` e `tests/test_historico_ingestoes.py` consultam o Supabase real, enquanto `tests/test_health.py` usa `monkeypatch` sem acessar o banco; veja o [README](../README.md#66-executar-os-testes).
+- A cobertura dos dados está temporariamente incompleta: 3 dos 26 arquivos da SSPDS/CE (Armas de Fogo de outubro/2026 e Salvamento/Incêndios 2022–2024) não foram carregados por problemas de padronização na fonte. Detalhes em [`docs/ingestion.md`](ingestion.md#81-incompletude-atual-dos-dados-em-produção).

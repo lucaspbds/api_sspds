@@ -63,10 +63,11 @@ flowchart LR
         T1[("historico_ingestoes")]
         T2[("informacoes_arquivo")]
         T3[("ocorrencias_crimes")]
+        V1[("vw_ocorrencias_publicadas")]
     end
 
     subgraph API["API (app/ — FastAPI)"]
-        R["GET /crimes/*<br/>(geral, cvli, vitimas,<br/>preconceito, operacionais)"]
+        R["GET /crimes/*, /historico-ingestoes/,<br/>/health/live, /health/ready"]
     end
 
     G -.executa.-> C
@@ -75,7 +76,10 @@ flowchart LR
     I --> T1
     I --> T2
     I --> T3
-    T3 --> R
+    T3 --> V1
+    T2 --> V1
+    V1 --> R
+    T1 --> R
     R --> U(["Cliente HTTP"])
 ```
 
@@ -86,17 +90,13 @@ flowchart LR
 3. Planilhas novas são **classificadas** por tipo, **inspecionadas** (série, período, último mês) e comparadas com a versão anterior da mesma série. Mudanças inesperadas geram aviso e preservam a versão anterior.
 4. Se a carga for liberada, o pipeline grava o arquivo em `informacoes_arquivo` com `periodo_dados` nulo, **normaliza** a planilha com `pandas`, insere as ocorrências em `ocorrencias_crimes` em lotes (ligadas ao arquivo pela chave `arquivo_id`) e confere a contagem. Só então **publica** (preenche `periodo_dados`) e exclui a versão substituída.
 5. Cada execução é registrada em `historico_ingestoes` (status, contadores, mensagem de erro/avisos, datas).
-6. A **API** consulta `ocorrencias_crimes` no Supabase (`app/services/crime_service.py`) e expõe os dados em JSON, com filtros por município, tipo de crime, AIS, natureza, perfil da vítima, dia da semana, tipo de entorpecente e período (`data_fato`).
+6. A **API** consulta a view `vw_ocorrencias_publicadas` (somente arquivos já publicados, com `periodo_dados` preenchido) em `app/services/crime_service.py` e a tabela `historico_ingestoes` em `app/services/historico_ingestoes_service.py`, expondo os dados em JSON com filtros por município, tipo de crime, AIS, natureza, perfil da vítima, dia da semana, tipo de entorpecente, período (`data_fato`) e status/data de ingestão.
 
 > [!NOTE]
 > A API lê **diretamente do Supabase** (`SUPABASE_URL` e `SUPABASE_KEY` no `.env`). Se não houver registros para a consulta, a rota responde `404`.
 
 > [!WARNING]
-> A consulta da API usa a tabela `ocorrencias_crimes`. O banco também define a view `vw_ocorrencias_publicadas` (apenas arquivos com `periodo_dados` preenchido), mas o código da API ainda não a utiliza. Por isso, enquanto uma carga está em andamento, ocorrências de um arquivo ainda não publicado podem aparecer nas respostas. A ingestão diária roda de madrugada (03:00 UTC) para reduzir essa janela.
-
-> [!WARNING]
 > **A cobertura dos dados em produção está temporariamente incompleta.** Na execução de ingestão observada em 22/11/2026, 3 dos 26 arquivos encontrados falharam e não foram carregados. Os recortes/temas correspondentes podem, portanto, não aparecer nas consultas da API. O problema está relacionado à padronização e à qualidade dos arquivos publicados pela SSPDS/CE, e está documentado em [`docs/ingestion.md`](docs/ingestion.md#81-incompletude-atual-dos-dados-em-produção).
-
 
 ---
 
@@ -125,12 +125,12 @@ api_sspds/
 │   └── workflows/
 │       └── ingestion.yml     # Ingestão agendada (GitHub Actions)
 ├── app/                      # API FastAPI
-│   ├── routers/              #   rotas (crimes.py)
+│   ├── routers/              #   rotas (crimes.py, historico_ingestoes.py)
 │   ├── schemas/              #   modelos Pydantic de resposta
-│   ├── services/             #   regras de acesso aos dados (crime_service.py)
+│   ├── services/             #   acesso aos dados (crime_service.py, historico_ingestoes_service.py)
 │   ├── config.py             #   get_variavel_ambiente (leitura do .env da API)
 │   ├── exception.py          #   handlers de exceção
-│   ├── main.py               #   instância FastAPI, /, /health
+│   ├── main.py               #   instância FastAPI, /, /health/live, /health/ready
 │   └── dockerfile
 ├── ingestion/                # Serviço de ingestão (ETL)
 │   ├── classifier.py  cleanup.py  config.py  crawler.py  downloader.py
@@ -148,6 +148,7 @@ api_sspds/
 │   └── evidencias/  evidencias.csv
 ├── tests/                    # Testes automatizados (pytest)
 │   ├── conftest.py  test_crimes.py  test_database.py
+│   ├── test_health.py  test_historico_ingestoes.py
 │   └── test_ingestion.py  test_versionamento.py
 ├── .env.example
 ├── .gitignore
@@ -172,7 +173,7 @@ api_sspds/
 | :-- | :-- |
 | `.github/workflows/ingestion.yml` | Executa `python -m ingestion.pipeline` todo dia às 03:00 UTC (meia-noite em Fortaleza) e sob demanda (`workflow_dispatch`). Serializa execuções com `concurrency` e usa os secrets `SUPABASE_URL` e `SUPABASE_KEY`. Detalhes em [`docs/ingestion.md`](docs/ingestion.md#6-execução-agendada-github-actions). |
 | `logging_system/` | Configuração de logs compartilhada por ingestão e banco. `configure_logging()` lê `LOG_LEVEL` e define o formato `data \| nível \| logger \| mensagem`. Também define a exceção de variável de ambiente ausente. |
-| `tests/` | Suíte `pytest`. `test_ingestion.py` cobre crawler, helpers, normalizadores, classificador, validador, cleanup e pipeline (com fakes; sem rede). `test_versionamento.py` cobre as regras de série, versão e reconciliação (sem rede). `test_crimes.py` testa a rota da API com `TestClient` (consulta o Supabase real). `test_database.py` (marcador `database`) testa a camada de acesso ao Supabase em uma instância real. `conftest.py` reúne os fixtures (HTML sintético, DataFrames de exemplo, ambiente fake do pipeline, cliente Supabase). |
+| `tests/` | Suíte `pytest`. `test_ingestion.py` cobre crawler, helpers, normalizadores, classificador, validador, cleanup e pipeline (com fakes; sem rede). `test_versionamento.py` cobre as regras de série, versão e reconciliação (sem rede). `test_health.py` testa `/health/live` e `/health/ready` (com `monkeypatch`; sem banco). `test_crimes.py` e `test_historico_ingestoes.py` testam as rotas da API com `TestClient` (consultam o Supabase real). `test_database.py` (marcador `database`) testa a camada de acesso ao Supabase em uma instância real. `conftest.py` reúne os fixtures (HTML sintético, DataFrames de exemplo, ambiente fake do pipeline, cliente Supabase). |
 | `certs/` | Certificado intermediário **Amazon RSA 2048 M01** (`.crt` e `.der`). O servidor do portal (`www.ce.gov.br`) não envia esse intermediário, e o `requests` em Linux/Docker não o obtém sozinho (erro `CERTIFICATE_VERIFY_FAILED`). O `.crt` é instalado na imagem da ingestão e no workflow do GitHub Actions, com `REQUESTS_CA_BUNDLE` apontando para o conjunto de certificados do sistema, sem `verify=False`. Detalhes em [`docs/ingestion.md`](docs/ingestion.md#75-erro-de-certificado-ssl-certificate_verify_failed). |
 | `app/dockerfile` | Imagem da API: `python:3.13.4`, instala `requirements.txt`, copia `app/`, `database/` e `logging_system/` e inicia `uvicorn app.main:app` na porta 8000. |
 | `ingestion/dockerfile` | Imagem da ingestão: `python:3.13.4`, instala `requirements.txt`, instala o certificado CA de `certs/`, copia `ingestion/`, `database/` e `logging_system/` e executa `python -m ingestion.pipeline`. |
@@ -320,12 +321,14 @@ O workflow [`ingestion.yml`](.github/workflows/ingestion.yml) roda a ingestão d
 | Endereço | O que retorna |
 | :-- | :-- |
 | `http://localhost:8000/` | Mensagem de boas-vindas e atalho para `/docs`. |
-| `http://localhost:8000/health` | `{"status": "ok"}` |
+| `http://localhost:8000/health/live` | Liveness check: `{"status": "ok"}`. |
+| `http://localhost:8000/health/ready` | Readiness check (valida conexão com o Supabase): `{"status": "ready", "database": "ok"}` ou `503`. |
 | `http://localhost:8000/docs` | Documentação interativa (Swagger UI). |
 | `http://localhost:8000/redoc` | Visualização alternativa da documentação, boa para leitura detalhada dos contratos de resposta e schemas. |
 | `http://localhost:8000/crimes/cvli?limit=5` | Primeiras 5 ocorrências de CVLI. |
 | `http://localhost:8000/crimes/?municipio=Fortaleza&tipo_crime=FURTO&data_inicio=2025-01-01&data_fim=2025-03-31&limit=10` | Consulta geral com filtros combinados (município, tipo de crime e período). |
-| `http://localhost:8000/crimes/vitimas`, `/crimes/preconceito`, `/crimes/operacionais` | Demais rotas específicas (veja [`docs/api.md`](docs/api.md)). |
+| `http://localhost:8000/crimes/vitimas`, `/crimes/preconceito`, `/crimes/operacionais` | Demais rotas específicas de ocorrências (veja [`docs/api.md`](docs/api.md)). |
+| `http://localhost:8000/historico-ingestoes/?limit=5` | Histórico das execuções da ingestão (aceita filtros por `status`, `data` e `limit`). |
 
 Detalhes de parâmetros, schemas e códigos de resposta (`200`, `404`, `422`, `500`, `503`) em [`docs/api.md`](docs/api.md).
 
@@ -348,7 +351,9 @@ python -m pytest -m "not database"
 | :-- | :-- |
 | `tests/test_ingestion.py` | `.env` preenchido (as configurações são lidas no import). Não acessa rede nem banco. |
 | `tests/test_versionamento.py` | Não acessa rede nem banco. |
-| `tests/test_crimes.py` | `SUPABASE_URL` e `SUPABASE_KEY` válidos e ao menos um registro de CVLI em `ocorrencias_crimes` (senão a rota responde `404` e os testes de sucesso falham). **Não** tem o marcador `database`, então `-m "not database"` não o exclui. |
+| `tests/test_health.py` | `.env` preenchido (módulos de log/banco lidos no import). Não acessa rede nem banco (usa `monkeypatch`). |
+| `tests/test_crimes.py` | `SUPABASE_URL` e `SUPABASE_KEY` válidos e ao menos um registro publicado de CVLI em `vw_ocorrencias_publicadas` (senão a rota responde `404` e os testes de sucesso falham). **Não** tem o marcador `database`, então `-m "not database"` não o exclui. |
+| `tests/test_historico_ingestoes.py` | `SUPABASE_URL` e `SUPABASE_KEY` válidos e ao menos um registro em `historico_ingestoes` para o teste sem filtros retornar `200`. **Não** tem o marcador `database`. |
 | `tests/test_database.py` | `SUPABASE_URL` e `SUPABASE_KEY` válidos; executa leituras **e escritas** (inserções, atualizações e exclusões) — use uma instância de desenvolvimento. Exige que o schema tenha `serie`, `ultimo_mes`, o status `PARCIAL` e a view `vw_ocorrencias_publicadas`. |
 
 ---

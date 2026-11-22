@@ -13,9 +13,6 @@ from database.exceptions import (
 
 configure_logging()
 logger = logging.getLogger("database.repository")
-# Silencia os logs de requisição (INFO) do httpx e httpcore
-logging.getLogger("httpx").setLevel(logging.WARNING)
-logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
 def criar_cliente_supabase() -> Client:
@@ -149,7 +146,7 @@ def consultar_registros(
             tabela,
             e,
         )
-        raise ErroOperacaoBanco("consulta", tabela, detalhe=str(e)) from e
+        raise ErroOperacaoBanco("consulta", tabela) from e
 
 
 def inserir_registros(
@@ -199,7 +196,7 @@ def inserir_registros(
             tabela,
             e,
         )
-        raise ErroOperacaoBanco("insercao", tabela, detalhe=str(e)) from e
+        raise ErroOperacaoBanco("insercao", tabela) from e
 
 
 def atualizar_registro(
@@ -259,7 +256,7 @@ def atualizar_registro(
             id_registro,
             e,
         )
-        raise ErroOperacaoBanco("atualizacao", tabela, detalhe=str(e)) from e
+        raise ErroOperacaoBanco("atualizacao", tabela) from e
 
 
 def excluir_arquivo(id_arquivo:int, cliente: Optional[Client] = None) -> list[Dict[str,Any]]:
@@ -305,7 +302,7 @@ def excluir_arquivo(id_arquivo:int, cliente: Optional[Client] = None) -> list[Di
             id_arquivo,
             e,
         )
-        raise ErroOperacaoBanco("exclusao", "informacoes_arquivo", detalhe=str(e)) from e
+        raise ErroOperacaoBanco("exclusao", "informacoes_arquivo") from e
 
 
 def contar_ocorrencias_por_arquivo(arquivo_id:int, cliente: Optional[Client] = None) -> int:
@@ -343,7 +340,7 @@ def contar_ocorrencias_por_arquivo(arquivo_id:int, cliente: Optional[Client] = N
             arquivo_id,
             e,
         )
-        raise ErroOperacaoBanco("contagem", "ocorrencias_crimes", detalhe=str(e)) from e
+        raise ErroOperacaoBanco("contagem", "ocorrencias_crimes") from e
 
     if resposta.count is None:
         logger.error("Contagem retornou None para arquivo_id=%s", arquivo_id)

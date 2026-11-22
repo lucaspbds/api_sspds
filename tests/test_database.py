@@ -387,11 +387,8 @@ def test_deve_incluir_operacao_e_mensagem_da_excecao_no_log_de_erro(
     cliente_falso.table.side_effect = RuntimeError(mensagem_erro)
 
     with caplog.at_level(logging.ERROR):
-        with pytest.raises(ErroOperacaoBanco) as contexto:
+        with pytest.raises(ErroOperacaoBanco):
             chamada(cliente_falso)
-
-    assert mensagem_erro in str(contexto.value)
-    
 
     mensagens_log = [record.getMessage() for record in caplog.records if record.levelname == "ERROR"]
     assert any(

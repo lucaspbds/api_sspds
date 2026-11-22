@@ -4,14 +4,6 @@ Esta documentação descreve a arquitetura, a estrutura de diretórios modular e
 
 A API é construída com **FastAPI** e lê os dados publicados pela view `vw_ocorrencias_publicadas` (ocorrências cujos arquivos já tiveram carga concluída) e pela tabela `historico_ingestoes` no **Supabase**. A documentação interativa gerada automaticamente fica em `/docs` (Swagger UI) e `/redoc`.
 
-## 🌐 Ambiente Hospedado e Status
-
-A API ainda está **em desenvolvimento**, mas já possui uma instância publicada e acessível para consultas e testes pela documentação interativa (Swagger UI):
-
-- **URL Base:** [https://api-sspds.onrender.com](https://api-sspds.onrender.com)
-- **Swagger UI (`/docs`):** [https://api-sspds.onrender.com/docs](https://api-sspds.onrender.com/docs)
-- **ReDoc (`/redoc`):** [https://api-sspds.onrender.com/redoc](https://api-sspds.onrender.com/redoc)
-
 ## 📁 Estrutura de Diretórios da API
 
 A API segue uma arquitetura orientada a serviços e separação de responsabilidades (Clean Architecture / Modular) dentro da pasta `app/`:

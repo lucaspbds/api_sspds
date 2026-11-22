@@ -50,7 +50,7 @@ def deletar_informacoes_arquivo(id: int, cliente=None) -> None:
     if cliente is None:
         cliente = criar_cliente_supabase()
     try:
-        excluir_arquivo(id_arquivo=id, cliente=cliente)
+        excluir_arquivo(id=id, cliente=cliente)
         logger.info("Registro de arquivo removido (CASCADE nas ocorrências) id=%s", id)
     except Exception as erro:
         logger.error("Erro ao remover registro de arquivo id=%s", id)

@@ -114,7 +114,7 @@ Catálogo dos arquivos brutos baixados da SSPDS/CE. Garante transparência públ
 | `nome_arquivo` | `VARCHAR(255)` | Não | - | Nome original do arquivo (ex: `Furto.xlsx`). |
 | `url_download` | `TEXT` | Não | - | URL pública oficial de origem na SSPDS. |
 | `hash_sha256` | `VARCHAR(64)` | Não | - | Hash criptográfico único (SHA-256) do arquivo. |
-| `tipo_crime` | `VARCHAR(100)` | Não | - | Tipo de indicador (ex: `furto`, `cvli`, `entorpecentes`). |
+| `tipo_crime` | `VARCHAR(100)` | Não | - | Tipo de indicador, no valor canônico do `ingestion/classifier.py` (ex: `FURTO`, `CRIMES VIOLENTOS LETAIS E INTENCIONAIS - CVLI`, `APREENSÃO DE ENTORPECENTES`). |
 | `periodo_dados` | `VARCHAR(50)` | Sim | `NULL` | Ano ou período coberto pela planilha (ex: `2025`, `2026`). Também indica se o processamento do arquivo foi concluído com sucesso: valor preenchido (diferente de `NULL`/`None`) indica ingestão concluída e dados processados; `NULL`/`None` indica ingestão não concluída. |
 | `serie` | `VARCHAR(20)` | Não | `'corrente'` | Série do arquivo: `'corrente'` ou `'historica'`. |
 | `ultimo_mes` | `INTEGER` | Sim | `NULL` | Último mês disponível na série, de `1` a `12` (ex: `10` = Outubro). |
@@ -132,15 +132,14 @@ Tabela unificada que armazena todas as ocorrências de segurança pública extra
 | :--- | :--- | :---: | :--- | :--- |
 | `id` | `BIGINT` | Não | Auto-incremental | Chave primária da ocorrência. |
 | `arquivo_id` | `BIGINT` | Não | - | FK vinculada a `informacoes_arquivo(id)` (`ON DELETE CASCADE`). |
-| `tipo_crime` | `VARCHAR(60)` | Não | - | Identificador do crime (ex: `furto`, `cvli`, `entorpecentes`). |
+| `tipo_crime` | `VARCHAR(60)` | Não | - | Identificador do crime, no valor canônico do `ingestion/classifier.py` (ex: `FURTO`, `CRIMES VIOLENTOS LETAIS E INTENCIONAIS - CVLI`, `APREENSÃO DE ENTORPECENTES`). |
 | `municipio` | `VARCHAR(100)` | Não | - | Município do fato (ex: `Fortaleza`, `Caucaia`). |
 | `ais` | `VARCHAR(30)` | Sim | `NULL` | Área Integrada de Segurança (ex: `AIS 01`). |
 | `local_fato` | `VARCHAR(150)` | Sim | `NULL` | Tipo de local quando informado (ex: via pública, comércio). |
 | `data_fato` | `DATE` | Não | - | Data em que o fato ocorreu. |
 | `hora_fato` | `TIME` | Sim | `NULL` | Horário da ocorrência. |
 | `dia_semana` | `VARCHAR(30)` | Sim | `NULL` | Dia da semana (ex: `Segunda-feira`). |
-| `st_dia_semana_divergente` | `BOOLEAN` | Não | `FALSE` | Indica se o dia da semana informado diverge da data do 
-fato. |
+| `st_dia_semana_divergente` | `BOOLEAN` | Não | `FALSE` | Indica se o dia da semana informado diverge da data do fato. |
 | `st_idade_invalida` | `BOOLEAN` | Não | `FALSE` | Indica se a idade informada na planilha é biologicamente implausível ou inválida (ex: negativa ou superior a 130 anos). |
 | `natureza` | `VARCHAR(150)` | Sim | `NULL` | Tipificação detalhada do delito. |
 | `meio_empregado` | `VARCHAR(100)` | Sim | `NULL` | Instrumento utilizado (ex: `Arma de fogo`). |
@@ -159,13 +158,16 @@ fato. |
 ### 3.4. Tabela: `api_request_logs`
 Armazena o resumo estruturado de cada requisição HTTP processada pela API FastAPI para cálculo de métricas de uso, latência e contabilização do indicador de consultas públicas (excluindo acessos da equipe e de monitoramento).
 
+> [!NOTE]
+> A tabela já está criada no banco, mas ainda **não é preenchida pela API**: o middleware de registro de acessos (que vai gerar o `request_id`/`X-Request-ID` e classificar o `client_type`) está pendente em `app/`.
+
 | Coluna | Tipo | Nulo | Padrão | Descrição |
 | :--- | :--- | :---: | :--- | :--- |
 | `id` | `BIGINT` | Não | Auto-incremental | Chave primária do registro de log (`GENERATED ALWAYS AS IDENTITY`). |
 | `request_id` | `UUID` | Não | - | Identificador único da requisição (retornado no header `X-Request-ID`). |
 | `requested_at` | `TIMESTAMPTZ` | Não | `now()` | Data e hora em que a requisição foi registrada. |
 | `method` | `VARCHAR(10)` | Não | - | Método HTTP utilizado (ex: `GET`, `POST`). |
-| `endpoint` | `VARCHAR(255)` | Não | - | Caminho da rota acessada sem query string (ex: `/api/v1/indicadores`). |
+| `endpoint` | `VARCHAR(255)` | Não | - | Caminho da rota acessada sem query string (ex: `/crimes/`, `/crimes/cvli`, `/historico-ingestoes/`). |
 | `status_code` | `SMALLINT` | Não | - | Código de status HTTP retornado (ex: `200`, `404`, `500`). |
 | `duration_ms` | `INTEGER` | Não | - | Tempo de processamento da requisição em milissegundos. |
 | `client_type` | `VARCHAR(20)` | Não | `'unknown'` | Classificação da origem: `'public'`, `'team'`, `'monitoring'` ou `'unknown'`. |
@@ -181,7 +183,7 @@ View de leitura utilizada pela API FastAPI para consultar apenas ocorrências cu
 ## 4. Decisões Arquiteturais e Justificativas
 
 1. **Tabela Única para Ocorrências (*Single Table*):**  
-   - Facilita os endpoints da API (ex: `GET /v1/indicadores?municipio=Fortaleza&ano=2025`), evitando múltiplos `UNION ALL` entre 13 tabelas distintas.  
+    - Facilita os endpoints da API (ex: `GET /crimes/?municipio=Fortaleza&data_inicio=2025-01-01&data_fim=2025-12-31`), evitando múltiplos `UNION ALL` entre 13 tabelas distintas.
    - No PostgreSQL, valores `NULL` não consomem espaço em disco adicional além do bitmap de nulos do cabeçalho.
 2. **Privacidade, Granularidade Territorial e Campo local_fato:**  
    - A SSPDS/CE geralmente restringe os dados espaciais a **Município** e **AIS** por privacidade. Contudo, em indicadores específicos (como Homofobia e Transfobia), a SSPDS fornece a tipologia do local (ex: via pública, residência, estabelecimento comercial). Por isso, a coluna local_fato é opcional (aceita NULL).
@@ -398,7 +400,7 @@ database/
 ├── __init__.py        # Inicializador do pacote
 ├── config.py          # Leitura e validação de variáveis de ambiente (.env)
 ├── exceptions.py      # Exceções customizadas da camada de banco de dados
-└── repository.py      # Funções de conexão, leitura, inserção e atualização
+└── repository.py      # Funções de conexão, leitura, inserção, atualização, exclusão e contagem
 ```
 
 ---
@@ -423,13 +425,13 @@ Define as exceções customizadas de domínio para padronizar o tratamento de fa
 
 - **`VariavelAmbienteNaoEncontrada(Exception)`**: Disparada quando uma variável de ambiente obrigatória (`SUPABASE_URL` ou `SUPABASE_KEY`) não é encontrada. Armazena o atributo `nome_variavel`.
 - **`ErroConexaoBanco(Exception)`**: Disparada quando não é possível inicializar o cliente ou estabelecer comunicação com o Supabase.
-- **`ErroOperacaoBanco(Exception)`**: Disparada quando uma operação de leitura (`consulta`), inserção (`insercao`) ou atualização (`atualizacao`) falha no banco de dados. Armazena os atributos `operacao` e `tabela`.
+- **`ErroOperacaoBanco(Exception)`**: Disparada quando uma operação de leitura (`consulta`), inserção (`insercao`), atualização (`atualizacao`), exclusão (`exclusao`) ou contagem (`contagem`) falha no banco de dados. Armazena os atributos `operacao`, `tabela` e `detalhe` (mensagem técnica opcional da exceção original).
 
 ---
 
 ### 7.3. `database/repository.py`
 
-Módulo principal responsável pelas operações de conexão e persistência no Supabase, utilizando `httpx.Client(timeout=10.0)` e o logger `database.repository`.
+Módulo principal responsável pelas operações de conexão e persistência no Supabase, utilizando `httpx.Client(timeout=10.0)` e o logger `database.repository`. Na inicialização, os loggers `httpx` e `httpcore` são ajustados para o nível `WARNING` para evitar poluição de logs `INFO` durante inserções em lote.
 
 #### `criar_cliente_supabase() -> Client`
 - **Descrição:** Inicializa e retorna o cliente de conexão com o Supabase utilizando `SUPABASE_URL` e `SUPABASE_KEY`, configurando o cliente HTTP (`httpx`) com timeout explícito de 10 segundos.

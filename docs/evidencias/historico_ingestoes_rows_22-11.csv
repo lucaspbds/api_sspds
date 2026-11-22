@@ -1,0 +1,5 @@
+id,data_inicio,data_fim,status,qtd_arquivos_encontrados,qtd_arquivos_processados,qtd_arquivos_falhas,mensagem_erro,criado_em
+1,2026-11-22 03:22:09.241064+00,2026-11-22 04:07:20.313932+00,PARCIAL,26,23,3,"3 arquivo(s) com falha:
+https://www.ce.gov.br/sspds/wp-content/uploads/sites/66/2026/01/Arma-de-Fogo_Outubro.xlsx: ValueError: Mês do nome (10) diverge do último mês dos dados (9).
+https://www.ce.gov.br/sspds/wp-content/uploads/sites/66/2026/01/Salvamento_2022-a-2024.xlsx: AttributeError: 'NaTType' object has no attribute 'dropna'
+https://www.ce.gov.br/sspds/wp-content/uploads/sites/66/2026/01/Incendios_2022-a-2024.xlsx: AttributeError: 'NaTType' object has no attribute 'dropna'",2026-11-22 03:22:09.241064+00

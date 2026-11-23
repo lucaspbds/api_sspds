@@ -216,7 +216,7 @@ David — implementar o downloader e normalizar os dados para o modelo do banco.
 ---
 ### Semana de 14/11
 
-**Quem trabalhou e quanto:** David Lucas Pereira Braga dos Santos — 4h; Nikelly Santiago da Silva — 8h; Carlos Abimael Oliveira do Nascimento — 2h
+**Quem trabalhou e quanto:** David Lucas Pereira Braga dos Santos — 4h; Nikelly Santiago da Silva — 19h; Carlos Abimael Oliveira do Nascimento — 2h
 
 **O que foi feito:**
 
@@ -235,7 +235,7 @@ David — implementar o downloader e normalizar os dados para o modelo do banco.
 ---
 ### Semana de 21/11
 
-**Quem trabalhou e quanto:** David Lucas Pereira Braga dos Santos — 6h; Nikelly Santiago da Silva — 2h20; Carlos Abimael Oliveira do Nascimento — 8h
+**Quem trabalhou e quanto:** David Lucas Pereira Braga dos Santos — 6h; Nikelly Santiago da Silva — 10h20; Carlos Abimael Oliveira do Nascimento — 8h
 
 **O que foi feito:**
 

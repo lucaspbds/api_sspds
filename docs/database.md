@@ -165,7 +165,7 @@ Armazena o resumo estruturado de cada requisição HTTP processada pela API Fast
 | `request_id` | `UUID` | Não | - | Identificador único da requisição (retornado no header `X-Request-ID`). |
 | `requested_at` | `TIMESTAMPTZ` | Não | `now()` | Data e hora em que a requisição foi registrada. |
 | `method` | `VARCHAR(10)` | Não | - | Método HTTP utilizado (ex: `GET`, `POST`). |
-| `endpoint` | `VARCHAR(255)` | Não | - | Caminho da rota acessada sem query string (ex: `/api/v1/indicadores`). |
+| `endpoint` | `VARCHAR(255)` | Não | - | Caminho da rota acessada sem query string (ex: `/crimes/`, `/crimes/cvli`, `/historico-ingestoes/`). |
 | `status_code` | `SMALLINT` | Não | - | Código de status HTTP retornado (ex: `200`, `404`, `500`). |
 | `duration_ms` | `INTEGER` | Não | - | Tempo de processamento da requisição em milissegundos. |
 | `client_type` | `VARCHAR(20)` | Não | `'unknown'` | Classificação da origem: `'public'`, `'team'`, `'monitoring'` ou `'unknown'`. |
@@ -181,7 +181,7 @@ View de leitura utilizada pela API FastAPI para consultar apenas ocorrências cu
 ## 4. Decisões Arquiteturais e Justificativas
 
 1. **Tabela Única para Ocorrências (*Single Table*):**  
-   - Facilita os endpoints da API (ex: `GET /v1/indicadores?municipio=Fortaleza&ano=2025`), evitando múltiplos `UNION ALL` entre 13 tabelas distintas.  
+    - Facilita os endpoints da API (ex: `GET /crimes/?municipio=Fortaleza&data_inicio=2025-01-01&data_fim=2025-12-31`), evitando múltiplos `UNION ALL` entre 13 tabelas distintas.
    - No PostgreSQL, valores `NULL` não consomem espaço em disco adicional além do bitmap de nulos do cabeçalho.
 2. **Privacidade, Granularidade Territorial e Campo local_fato:**  
    - A SSPDS/CE geralmente restringe os dados espaciais a **Município** e **AIS** por privacidade. Contudo, em indicadores específicos (como Homofobia e Transfobia), a SSPDS fornece a tipologia do local (ex: via pública, residência, estabelecimento comercial). Por isso, a coluna local_fato é opcional (aceita NULL).
@@ -398,7 +398,7 @@ database/
 ├── __init__.py        # Inicializador do pacote
 ├── config.py          # Leitura e validação de variáveis de ambiente (.env)
 ├── exceptions.py      # Exceções customizadas da camada de banco de dados
-└── repository.py      # Funções de conexão, leitura, inserção e atualização
+└── repository.py      # Funções de conexão, leitura, inserção, atualização, exclusão e contagem
 ```
 
 ---
@@ -423,13 +423,13 @@ Define as exceções customizadas de domínio para padronizar o tratamento de fa
 
 - **`VariavelAmbienteNaoEncontrada(Exception)`**: Disparada quando uma variável de ambiente obrigatória (`SUPABASE_URL` ou `SUPABASE_KEY`) não é encontrada. Armazena o atributo `nome_variavel`.
 - **`ErroConexaoBanco(Exception)`**: Disparada quando não é possível inicializar o cliente ou estabelecer comunicação com o Supabase.
-- **`ErroOperacaoBanco(Exception)`**: Disparada quando uma operação de leitura (`consulta`), inserção (`insercao`) ou atualização (`atualizacao`) falha no banco de dados. Armazena os atributos `operacao` e `tabela`.
+- **`ErroOperacaoBanco(Exception)`**: Disparada quando uma operação de leitura (`consulta`), inserção (`insercao`), atualização (`atualizacao`), exclusão (`exclusao`) ou contagem (`contagem`) falha no banco de dados. Armazena os atributos `operacao`, `tabela` e `detalhe` (mensagem técnica opcional da exceção original).
 
 ---
 
 ### 7.3. `database/repository.py`
 
-Módulo principal responsável pelas operações de conexão e persistência no Supabase, utilizando `httpx.Client(timeout=10.0)` e o logger `database.repository`.
+Módulo principal responsável pelas operações de conexão e persistência no Supabase, utilizando `httpx.Client(timeout=10.0)` e o logger `database.repository`. Na inicialização, os loggers `httpx` e `httpcore` são ajustados para o nível `WARNING` para evitar poluição de logs `INFO` durante inserções em lote.
 
 #### `criar_cliente_supabase() -> Client`
 - **Descrição:** Inicializa e retorna o cliente de conexão com o Supabase utilizando `SUPABASE_URL` e `SUPABASE_KEY`, configurando o cliente HTTP (`httpx`) com timeout explícito de 10 segundos.

@@ -114,7 +114,7 @@ Catálogo dos arquivos brutos baixados da SSPDS/CE. Garante transparência públ
 | `nome_arquivo` | `VARCHAR(255)` | Não | - | Nome original do arquivo (ex: `Furto.xlsx`). |
 | `url_download` | `TEXT` | Não | - | URL pública oficial de origem na SSPDS. |
 | `hash_sha256` | `VARCHAR(64)` | Não | - | Hash criptográfico único (SHA-256) do arquivo. |
-| `tipo_crime` | `VARCHAR(100)` | Não | - | Tipo de indicador (ex: `furto`, `cvli`, `entorpecentes`). |
+| `tipo_crime` | `VARCHAR(100)` | Não | - | Tipo de indicador, no valor canônico do `ingestion/classifier.py` (ex: `FURTO`, `CRIMES VIOLENTOS LETAIS E INTENCIONAIS - CVLI`, `APREENSÃO DE ENTORPECENTES`). |
 | `periodo_dados` | `VARCHAR(50)` | Sim | `NULL` | Ano ou período coberto pela planilha (ex: `2025`, `2026`). Também indica se o processamento do arquivo foi concluído com sucesso: valor preenchido (diferente de `NULL`/`None`) indica ingestão concluída e dados processados; `NULL`/`None` indica ingestão não concluída. |
 | `serie` | `VARCHAR(20)` | Não | `'corrente'` | Série do arquivo: `'corrente'` ou `'historica'`. |
 | `ultimo_mes` | `INTEGER` | Sim | `NULL` | Último mês disponível na série, de `1` a `12` (ex: `10` = Outubro). |
@@ -132,15 +132,14 @@ Tabela unificada que armazena todas as ocorrências de segurança pública extra
 | :--- | :--- | :---: | :--- | :--- |
 | `id` | `BIGINT` | Não | Auto-incremental | Chave primária da ocorrência. |
 | `arquivo_id` | `BIGINT` | Não | - | FK vinculada a `informacoes_arquivo(id)` (`ON DELETE CASCADE`). |
-| `tipo_crime` | `VARCHAR(60)` | Não | - | Identificador do crime (ex: `furto`, `cvli`, `entorpecentes`). |
+| `tipo_crime` | `VARCHAR(60)` | Não | - | Identificador do crime, no valor canônico do `ingestion/classifier.py` (ex: `FURTO`, `CRIMES VIOLENTOS LETAIS E INTENCIONAIS - CVLI`, `APREENSÃO DE ENTORPECENTES`). |
 | `municipio` | `VARCHAR(100)` | Não | - | Município do fato (ex: `Fortaleza`, `Caucaia`). |
 | `ais` | `VARCHAR(30)` | Sim | `NULL` | Área Integrada de Segurança (ex: `AIS 01`). |
 | `local_fato` | `VARCHAR(150)` | Sim | `NULL` | Tipo de local quando informado (ex: via pública, comércio). |
 | `data_fato` | `DATE` | Não | - | Data em que o fato ocorreu. |
 | `hora_fato` | `TIME` | Sim | `NULL` | Horário da ocorrência. |
 | `dia_semana` | `VARCHAR(30)` | Sim | `NULL` | Dia da semana (ex: `Segunda-feira`). |
-| `st_dia_semana_divergente` | `BOOLEAN` | Não | `FALSE` | Indica se o dia da semana informado diverge da data do 
-fato. |
+| `st_dia_semana_divergente` | `BOOLEAN` | Não | `FALSE` | Indica se o dia da semana informado diverge da data do fato. |
 | `st_idade_invalida` | `BOOLEAN` | Não | `FALSE` | Indica se a idade informada na planilha é biologicamente implausível ou inválida (ex: negativa ou superior a 130 anos). |
 | `natureza` | `VARCHAR(150)` | Sim | `NULL` | Tipificação detalhada do delito. |
 | `meio_empregado` | `VARCHAR(100)` | Sim | `NULL` | Instrumento utilizado (ex: `Arma de fogo`). |
@@ -158,6 +157,9 @@ fato. |
 
 ### 3.4. Tabela: `api_request_logs`
 Armazena o resumo estruturado de cada requisição HTTP processada pela API FastAPI para cálculo de métricas de uso, latência e contabilização do indicador de consultas públicas (excluindo acessos da equipe e de monitoramento).
+
+> [!NOTE]
+> A tabela já está criada no banco, mas ainda **não é preenchida pela API**: o middleware de registro de acessos (que vai gerar o `request_id`/`X-Request-ID` e classificar o `client_type`) está pendente em `app/`.
 
 | Coluna | Tipo | Nulo | Padrão | Descrição |
 | :--- | :--- | :---: | :--- | :--- |

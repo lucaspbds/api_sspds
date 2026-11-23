@@ -12,9 +12,9 @@ A API segue uma arquitetura orientada a serviços e separação de responsabilid
 api_sspds/
 ├── app/
 │   ├── __init__.py
-│   ├── config.py                 # get_variavel_ambiente (leitura do .env, independente de database/)
+│   ├── config.py                          # get_variavel_ambiente (leitura do .env, independente de database/)
 │   ├── dockerfile
-│   ├── exception.py              # Exceções da API (RecursoNaoEncontrado, VariavelAmbienteNaoEncontrada) e handlers
+│   ├── exception.py                       # Exceções da API (RecursoNaoEncontrado, VariavelAmbienteNaoEncontrada) e handlers
 │   ├── main.py                            # Instância FastAPI, /, /health/live, /health/ready
 │   ├── routers/
 │   │   ├── __init__.py
@@ -76,6 +76,7 @@ Erros de banco (`ErroOperacaoBanco`), de conexão (`ErroConexaoBanco`) e de conf
 - **Códigos de Resposta:**
   - `200 OK`: `{"status": "ready", "database": "ok"}`
   - `503 Service Unavailable`: `{"detail": "Banco de dados indisponível ou configuração ausente."}` (ou `"Banco de dados indisponível."`)
+
 ---
 
 ### 3. Consulta Geral Unificada de Crimes
@@ -130,7 +131,7 @@ Erros de banco (`ErroOperacaoBanco`), de conexão (`ErroConexaoBanco`) e de conf
 - **Método:** `GET`
 - **Rota:** `/crimes/cvli`
 - **Parâmetros de Query:**
-  - `limit` (opcional, `integer`): Limita o número de registos retornados. Caso omitido, retorna a base completa.
+  - `limit` (opcional, `integer`): Limita o número de registos retornados. Caso omitido, retorna todos os registros até o teto do Supabase/PostgREST (1000 linhas por requisição; veja [Observações e limitações](#observações-e-limitações)).
 - **Tipo(s) de crime:** `CRIMES VIOLENTOS LETAIS E INTENCIONAIS - CVLI`
 - **Response Model:** `List[CvliResponse]`
 - **Descrição:** Lista ocorrências específicas de CVLI com detalhamento de perfil de vítima e natureza.
@@ -267,3 +268,4 @@ Os detalhes técnicos (nome da variável de ambiente, stack trace) são registra
 - O Supabase/PostgREST pode impor um teto de linhas por requisição (padrão de 1000 no Supabase hospedado, configurável no projeto). Use `limit` e os filtros de período para consultas grandes; ainda não há paginação por `offset`.
 - As variáveis `SUPABASE_URL`, `SUPABASE_KEY` e `LOG_LEVEL` precisam estar definidas no `.env` (o módulo de banco configura os logs ao ser importado).
 - Os testes de `tests/test_crimes.py` e `tests/test_historico_ingestoes.py` consultam o Supabase real, enquanto `tests/test_health.py` usa `monkeypatch` sem acessar o banco; veja o [README](../README.md#66-executar-os-testes).
+- A cobertura dos dados está temporariamente incompleta: 3 dos 26 arquivos da SSPDS/CE (Armas de Fogo de outubro/2026 e Salvamento/Incêndios 2022–2024) não foram carregados por problemas de padronização na fonte. Detalhes em [`docs/ingestion.md`](ingestion.md#81-incompletude-atual-dos-dados-em-produção).

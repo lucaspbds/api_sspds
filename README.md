@@ -95,6 +95,9 @@ flowchart LR
 > [!NOTE]
 > A API lê **diretamente do Supabase** (`SUPABASE_URL` e `SUPABASE_KEY` no `.env`). Se não houver registros para a consulta, a rota responde `404`.
 
+> [!WARNING]
+> **A cobertura dos dados em produção está temporariamente incompleta.** Na execução de ingestão observada em 22/11/2026, 3 dos 26 arquivos encontrados falharam e não foram carregados. Os recortes/temas correspondentes podem, portanto, não aparecer nas consultas da API. O problema está relacionado à padronização e à qualidade dos arquivos publicados pela SSPDS/CE, e está documentado em [`docs/ingestion.md`](docs/ingestion.md#81-incompletude-atual-dos-dados-em-produção).
+
 ---
 
 ## 3. Stack tecnológica

@@ -610,6 +610,32 @@ Assim as requisições HTTPS são feitas **sem desabilitar a validação** (`ver
 5. **Inspeção lê a planilha inteira antes da decisão.** O arquivo é lido uma vez para inspeção e o mesmo DataFrame é reutilizado na normalização; planilhas ignoradas por hash não chegam a ser lidas.
 6. **`INSERT_CHUNK_SIZE` aceita só inteiro simples** (usa `recebeInteiro`); expressões aritméticas valem apenas em `CHUNK_SIZE` e `HASH_CHUNK_SIZE`.
 
+### 8.1 Incompletude atual dos dados em produção
+
+Em **22/11/2026**, foi observada a execução de ingestão `id = 1`, com status `PARCIAL`, iniciada em `2026-11-22 03:22:09.241064+00` e finalizada em `2026-11-22 04:07:20.313932+00`. A execução encontrou 26 arquivos, processou 23 e registrou falha em 3 arquivos. A evidência da execução está em [`historico_ingestoes_rows_22-11.csv`](evidencias/historico_ingestoes_rows_22-11.csv).
+
+Os três arquivos com falha **não foram carregados na base em produção**. Portanto, a **cobertura em produção encontra-se incompleta** para os respectivos recortes temporais e temas até que os arquivos sejam corrigidos na fonte e processados com sucesso por uma nova execução.
+
+#### Arquivos não carregados
+
+| Arquivo | URL publicada pela SSPDS/CE | Erro registrado |
+| :-- | :-- | :-- |
+| `Arma-de-Fogo_Outubro.xlsx` | <https://www.ce.gov.br/sspds/wp-content/uploads/sites/66/2026/01/Arma-de-Fogo_Outubro.xlsx> | `ValueError: Mês do nome (10) diverge do último mês dos dados (9).` |
+| `Salvamento_2022-a-2024.xlsx` | <https://www.ce.gov.br/sspds/wp-content/uploads/sites/66/2026/01/Salvamento_2022-a-2024.xlsx> | `AttributeError: 'NaTType' object has no attribute 'dropna'` |
+| `Incendios_2022-a-2024.xlsx` | <https://www.ce.gov.br/sspds/wp-content/uploads/sites/66/2026/01/Incendios_2022-a-2024.xlsx> | `AttributeError: 'NaTType' object has no attribute 'dropna'` |
+
+#### Causa técnica identificada
+
+Nos arquivos `Salvamento_2022-a-2024.xlsx` e `Incendios_2022-a-2024.xlsx`, os cabeçalhos estão divergentes/alterados em relação à padronização esperada pela ingestão e às demais planilhas da seção atual. Também foi identificada a ausência da coluna `AIS`. Como as colunas esperadas não são reconhecidas, a extração/conversão da data resulta em `NaTType`, em vez de uma série/objeto compatível com a chamada a `.dropna()`, o que dispara o `AttributeError` registrado.
+
+Essas ocorrências caracterizam um problema operacional na ingestão e na qualidade/padronização dos arquivos publicados pela fonte. **Não indicam falha do modelo de banco de dados.**
+
+#### Tratativa junto à SSPDS/CE
+
+Foi aberta solicitação formal à SSPDS/CE, via e-SIC, para tratar das colunas divergentes/ausentes nos arquivos de Salvamento e Incêndios e da ausência de dados de Salvamento em outubro. A cópia da solicitação está disponível em [`e-sic_arquivos_inconsistentes_solicitacao_22-11.pdf`](evidencias/e-sic_arquivos_inconsistentes_solicitacao_22-11.pdf).
+
+Até a disponibilização de arquivos corrigidos e sua ingestão bem-sucedida, consultas à API podem não contemplar os registros correspondentes a esses recortes/temas. A cobertura deve ser considerada temporariamente incompleta; a falha e a pendência devem permanecer registradas até a regularização da fonte e a confirmação da carga em produção.
+
 ---
 
 ## 9. Variáveis de ambiente do serviço

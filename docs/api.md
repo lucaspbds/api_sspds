@@ -102,7 +102,7 @@ Erros de banco (`ErroOperacaoBanco`), de conexão (`ErroConexaoBanco`) e de conf
   - `tipo_entorpecente` (`string`, até 100): Filtra pelo tipo de droga apreendida.
   - `data_inicio` (`date`, `AAAA-MM-DD`): Data inicial **inclusiva** sobre `data_fato`.
   - `data_fim` (`date`, `AAAA-MM-DD`): Data final **inclusiva** sobre `data_fato`.
-  - `limit` (`integer`, `> 0`): Limita o número de registos retornados.
+  - `limit` (`integer`, `> 0`): Limita o número de registros retornados.
 - **Response Model:** `List[CrimeGeralResponse]`
 - **Descrição:** Consulta a base unificada de dados permitindo o uso combinado de filtros de pesquisa.
 - **Normalização dos filtros de texto:** `municipio`, `ais`, `natureza`, `meio_empregado`, `vitima_genero`, `vitima_raca`, `dia_semana` e `tipo_entorpecente` são comparados por igualdade exata, mas a entrada é normalizada para o padrão gravado pela ingestão (espaços extras removidos e Title Case), então `fortaleza` encontra `Fortaleza` e `masculino` encontra `Masculino`. `tipo_crime` é normalizado para caixa alta.
@@ -138,15 +138,27 @@ Erros de banco (`ErroOperacaoBanco`), de conexão (`ErroConexaoBanco`) e de conf
 ### 4. Listagem de Crimes Violentos Letais Intencionais (CVLI)
 - **Método:** `GET`
 - **Rota:** `/crimes/cvli`
-- **Parâmetros de Query:**
-  - `limit` (opcional, `integer`): Limita o número de registos retornados. Caso omitido, retorna todos os registros até o teto do Supabase/PostgREST (1000 linhas por requisição; veja [Observações e limitações](#observações-e-limitações)).
+- **Parâmetros de Query (todos opcionais e combináveis):**
+  - `municipio` (`string`, 1–100 caracteres): Filtra por nome do município.
+  - `ais` (`string`, até 30 caracteres): Filtra por Área Integrada de Segurança (ex.: `AIS 01`).
+  - `dia_semana` (`string`, até 30): Filtra pelo dia da semana (ex.: `Segunda-feira`).
+  - `natureza` (`string`, até 150): Filtra pela tipificação detalhada do delito.
+  - `meio_empregado` (`string`, até 100): Filtra pelo instrumento utilizado (ex.: `Arma de fogo`).
+  - `vitima_genero` (`string`, até 50): Filtra pelo gênero da vítima.
+  - `vitima_raca` (`string`, até 50): Filtra pela raça/cor da vítima.
+  - `vitima_idade` (`integer`, `>= 0`): Filtra pela idade da vítima.
+  - `vitima_escolaridade` (`string`, até 100): Filtra pela escolaridade da vítima.
+  - `data_inicio` (`date`, `AAAA-MM-DD`): Data inicial **inclusiva** sobre `data_fato`.
+  - `data_fim` (`date`, `AAAA-MM-DD`): Data final **inclusiva** sobre `data_fato`.
+  - `limit` (`integer`, `> 0`): Limita o número de registros retornados. Caso omitido, retorna todos os registros até o teto do Supabase/PostgREST (1000 linhas por requisição; veja [Observações e limitações](#observações-e-limitações)).
 - **Tipo(s) de crime:** `CRIMES VIOLENTOS LETAIS E INTENCIONAIS - CVLI`
 - **Response Model:** `List[CvliResponse]`
 - **Descrição:** Lista ocorrências específicas de CVLI com detalhamento de perfil de vítima e natureza.
+- **Exemplo:** `GET /crimes/cvli?municipio=Fortaleza&meio_empregado=Arma%20de%20fogo&data_inicio=2025-01-01&data_fim=2025-03-31&limit=10`
 - **Códigos de Resposta:**
   - `200 OK`: Dados encontrados e retornados com sucesso.
   - `404 Not Found`: Nenhum dado de CVLI encontrado na base.
-  - `422 Unprocessable Content`: Parâmetro `limit` inválido (não numérico ou menor/igual a zero).
+  - `422 Unprocessable Content`: Parâmetro de consulta inválido (ex.: `limit <= 0`, `vitima_idade < 0` ou data fora do formato) **ou** `data_inicio` posterior a `data_fim`.
   - `500` / `503`: Falha no banco de dados ou na configuração.
 
 ---
@@ -154,15 +166,25 @@ Erros de banco (`ErroOperacaoBanco`), de conexão (`ErroConexaoBanco`) e de conf
 ### 5. Listagem de Crimes com Perfil de Vítima
 - **Método:** `GET`
 - **Rota:** `/crimes/vitimas`
-- **Parâmetros de Query:**
-  - `limit` (opcional, `integer`): Limita o número de registos retornados.
-- **Tipo(s) de crime:** `LEI 11.340/06 (LEI MARIA DA PENHA)`, `CRIMES SEXUAIS` e `INDÍGENAS VÍTIMAS DE CRIMES` (os três, na mesma lista; use `tipo_crime` em cada registo para distingui-los).
+- **Parâmetros de Query (todos opcionais e combináveis):**
+  - `municipio` (`string`, 1–100 caracteres): Filtra por nome do município.
+  - `ais` (`string`, até 30 caracteres): Filtra por Área Integrada de Segurança (ex.: `AIS 01`).
+  - `dia_semana` (`string`, até 30): Filtra pelo dia da semana (ex.: `Segunda-feira`).
+  - `vitima_genero` (`string`, até 50): Filtra pelo gênero da vítima.
+  - `vitima_raca` (`string`, até 50): Filtra pela raça/cor da vítima.
+  - `vitima_idade` (`integer`, `>= 0`): Filtra pela idade da vítima.
+  - `vitima_escolaridade` (`string`, até 100): Filtra pela escolaridade da vítima.
+  - `data_inicio` (`date`, `AAAA-MM-DD`): Data inicial **inclusiva** sobre `data_fato`.
+  - `data_fim` (`date`, `AAAA-MM-DD`): Data final **inclusiva** sobre `data_fato`.
+  - `limit` (`integer`, `> 0`): Limita o número de registros retornados.
+- **Tipo(s) de crime:** `LEI 11.340/06 (LEI MARIA DA PENHA)`, `CRIMES SEXUAIS` e `INDÍGENAS VÍTIMAS DE CRIMES` (os três, na mesma lista; use `tipo_crime` em cada registro para distingui-los).
 - **Response Model:** `List[CrimeComVitimaResponse]`
 - **Descrição:** Retorna ocorrências específicas de crimes com detalhamento de perfil da vítima (Lei Maria da Penha, Crimes Sexuais e Indígenas).
+- **Exemplo:** `GET /crimes/vitimas?municipio=Fortaleza&vitima_genero=Feminino&data_inicio=2025-01-01&data_fim=2025-03-31&limit=10`
 - **Códigos de Resposta:**
   - `200 OK`: Dados encontrados e retornados com sucesso.
   - `404 Not Found`: Nenhum registro de crime com vítima encontrado.
-  - `422 Unprocessable Content`: Parâmetro `limit` inválido.
+  - `422 Unprocessable Content`: Parâmetro de consulta inválido (ex.: `limit <= 0`, `vitima_idade < 0` ou data fora do formato) **ou** `data_inicio` posterior a `data_fim`.
   - `500` / `503`: Falha no banco de dados ou na configuração.
 
 ---
@@ -170,15 +192,28 @@ Erros de banco (`ErroOperacaoBanco`), de conexão (`ErroConexaoBanco`) e de conf
 ### 6. Listagem de Crimes de Preconceito
 - **Método:** `GET`
 - **Rota:** `/crimes/preconceito`
-- **Parâmetros de Query:**
-  - `limit` (opcional, `integer`): Limita o número de registos retornados.
+- **Parâmetros de Query (todos opcionais e combináveis):**
+  - `municipio` (`string`, 1–100 caracteres): Filtra por nome do município.
+  - `ais` (`string`, até 30 caracteres): Filtra por Área Integrada de Segurança (ex.: `AIS 01`).
+  - `dia_semana` (`string`, até 30): Filtra pelo dia da semana (ex.: `Segunda-feira`).
+  - `natureza` (`string`, até 150): Filtra pela tipificação detalhada do delito.
+  - `local_fato` (`string`, até 150): Filtra pelo local de ocorrência do fato.
+  - `vitima_genero` (`string`, até 50): Filtra pelo gênero da vítima.
+  - `vitima_orientacao_sexual` (`string`, até 50): Filtra pela orientação sexual da vítima.
+  - `vitima_raca` (`string`, até 50): Filtra pela raça/cor da vítima.
+  - `vitima_idade` (`integer`, `>= 0`): Filtra pela idade da vítima.
+  - `vitima_escolaridade` (`string`, até 100): Filtra pela escolaridade da vítima.
+  - `data_inicio` (`date`, `AAAA-MM-DD`): Data inicial **inclusiva** sobre `data_fato`.
+  - `data_fim` (`date`, `AAAA-MM-DD`): Data final **inclusiva** sobre `data_fato`.
+  - `limit` (`integer`, `> 0`): Limita o número de registros retornados.
 - **Tipo(s) de crime:** `HOMOFOBIA E TRANSFOBIA`
 - **Response Model:** `List[PreconceitoResponse]`
 - **Descrição:** Retorna ocorrências específicas de crimes motivados por preconceito (homofobia e transfobia).
+- **Exemplo:** `GET /crimes/preconceito?municipio=Fortaleza&vitima_orientacao_sexual=Homossexual&limit=10`
 - **Códigos de Resposta:**
   - `200 OK`: Dados encontrados e retornados com sucesso.
   - `404 Not Found`: Nenhum crime de preconceito encontrado.
-  - `422 Unprocessable Content`: Parâmetro `limit` inválido.
+  - `422 Unprocessable Content`: Parâmetro de consulta inválido (ex.: `limit <= 0`, `vitima_idade < 0` ou data fora do formato) **ou** `data_inicio` posterior a `data_fim`.
   - `500` / `503`: Falha no banco de dados ou na configuração.
 
 ---
@@ -186,15 +221,21 @@ Erros de banco (`ErroOperacaoBanco`), de conexão (`ErroConexaoBanco`) e de conf
 ### 7. Listagem de Crimes Operacionais
 - **Método:** `GET`
 - **Rota:** `/crimes/operacionais`
-- **Parâmetros de Query:**
-  - `limit` (opcional, `integer`): Limita o número de registos retornados.
-- **Tipo(s) de crime:** `FURTO` e `CRIMES VIOLENTOS CONTRA O PATRIMÔNIO - CVP` (os dois, na mesma lista; use `tipo_crime` em cada registo para distingui-los).
+- **Parâmetros de Query (todos opcionais e combináveis):**
+  - `municipio` (`string`, 1–100 caracteres): Filtra por nome do município.
+  - `ais` (`string`, até 30 caracteres): Filtra por Área Integrada de Segurança (ex.: `AIS 01`).
+  - `dia_semana` (`string`, até 30): Filtra pelo dia da semana (ex.: `Segunda-feira`).
+  - `data_inicio` (`date`, `AAAA-MM-DD`): Data inicial **inclusiva** sobre `data_fato`.
+  - `data_fim` (`date`, `AAAA-MM-DD`): Data final **inclusiva** sobre `data_fato`.
+  - `limit` (`integer`, `> 0`): Limita o número de registros retornados.
+- **Tipo(s) de crime:** `FURTO` e `CRIMES VIOLENTOS CONTRA O PATRIMÔNIO - CVP` (os dois, na mesma lista; use `tipo_crime` em cada registro para distingui-los).
 - **Response Model:** `List[OperacionalResponse]`
 - **Descrição:** Retorna ocorrências de crimes operacionais de menor complexidade estrutural (Furtos e CVP).
+- **Exemplo:** `GET /crimes/operacionais?municipio=Fortaleza&ais=AIS%2001&data_inicio=2025-01-01&data_fim=2025-03-31&limit=10`
 - **Códigos de Resposta:**
   - `200 OK`: Dados encontrados e retornados com sucesso.
   - `404 Not Found`: Nenhum registro operacional encontrado.
-  - `422 Unprocessable Content`: Parâmetro `limit` inválido.
+  - `422 Unprocessable Content`: Parâmetro de consulta inválido (ex.: `limit <= 0` ou data fora do formato) **ou** `data_inicio` posterior a `data_fim`.
   - `500` / `503`: Falha no banco de dados ou na configuração.
 
 ---

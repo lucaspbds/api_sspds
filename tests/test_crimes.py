@@ -44,3 +44,97 @@ def test_rotas_especificas_respondem():
     for rota in ("/crimes/preconceito", "/crimes/operacionais", "/crimes/vitimas"):
         response = client.get(rota)
         assert response.status_code in (200, 404)
+
+
+def test_listar_cvli_com_filtros_especificos():
+    """Testa filtros específicos do schema de CVLI (município, AIS, natureza, meio e vítima)."""
+    response = client.get(
+        "/crimes/cvli",
+        params={
+            "municipio": "Fortaleza",
+            "ais": "AIS 01",
+            "dia_semana": "Segunda-feira",
+            "natureza": "Homicídio",
+            "meio_empregado": "Arma de fogo",
+            "vitima_genero": "Masculino",
+            "vitima_raca": "Parda",
+            "vitima_idade": 25,
+            "vitima_escolaridade": "Ensino Médio",
+            "data_inicio": "2024-01-01",
+            "data_fim": "2024-12-31",
+            "limit": 5,
+        },
+    )
+    assert response.status_code in (200, 404)
+    if response.status_code == 200:
+        assert isinstance(response.json(), list)
+
+
+def test_listar_preconceito_com_filtros_especificos():
+    """Testa filtros específicos do schema de preconceito."""
+    response = client.get(
+        "/crimes/preconceito",
+        params={
+            "municipio": "Fortaleza",
+            "local_fato": "Via Pública",
+            "vitima_orientacao_sexual": "Homossexual",
+            "vitima_idade": 30,
+            "data_inicio": "2024-01-01",
+            "data_fim": "2024-12-31",
+        },
+    )
+    assert response.status_code in (200, 404)
+    if response.status_code == 200:
+        assert isinstance(response.json(), list)
+
+
+def test_listar_operacionais_com_filtros_especificos():
+    """Testa filtros específicos do schema de crimes operacionais."""
+    response = client.get(
+        "/crimes/operacionais",
+        params={
+            "municipio": "Fortaleza",
+            "ais": "AIS 02",
+            "dia_semana": "Sexta-feira",
+            "data_inicio": "2024-01-01",
+            "data_fim": "2024-12-31",
+            "limit": 5,
+        },
+    )
+    assert response.status_code in (200, 404)
+    if response.status_code == 200:
+        assert isinstance(response.json(), list)
+
+
+def test_listar_vitimas_com_filtros_especificos():
+    """Testa filtros específicos do schema de crimes com perfil de vítima."""
+    response = client.get(
+        "/crimes/vitimas",
+        params={
+            "municipio": "Fortaleza",
+            "vitima_genero": "Feminino",
+            "vitima_raca": "Parda",
+            "vitima_idade": 28,
+            "vitima_escolaridade": "Superior",
+            "data_inicio": "2024-01-01",
+            "data_fim": "2024-12-31",
+            "limit": 5,
+        },
+    )
+    assert response.status_code in (200, 404)
+    if response.status_code == 200:
+        assert isinstance(response.json(), list)
+
+
+def test_rotas_especificas_intervalo_datas_invalido():
+    """Testa se data_inicio posterior a data_fim retorna 422 nas rotas específicas."""
+    for rota in ("/crimes/cvli", "/crimes/preconceito", "/crimes/operacionais", "/crimes/vitimas"):
+        response = client.get(f"{rota}?data_inicio=2026-12-31&data_fim=2026-01-01")
+        assert response.status_code == 422
+
+
+def test_rotas_especificas_idade_negativa_invalida():
+    """Testa se vitima_idade negativa retorna 422 nas rotas que aceitam o filtro."""
+    for rota in ("/crimes/cvli", "/crimes/preconceito", "/crimes/vitimas"):
+        response = client.get(f"{rota}?vitima_idade=-1")
+        assert response.status_code == 422

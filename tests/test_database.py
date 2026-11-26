@@ -10,8 +10,11 @@ from database.exceptions import (
     VariavelAmbienteNaoEncontrada,
 )
 from database.repository import (
+    LIMITE_MAXIMO_PAGINACAO,
+    LIMITE_PADRAO_PAGINACAO,
     atualizar_registro,
     consultar_registros,
+    consultar_registros_paginados,
     contar_ocorrencias_por_arquivo,
     excluir_arquivo,
     inserir_registros,
@@ -721,6 +724,421 @@ def test_view_deve_ocultar_ocorrencias_sem_periodo_e_exibir_apos_publicacao(
         )
         assert len(publicados) == 1
         assert publicados[0]["municipio"] == "Caucaia"
+    finally:
+        if id_arquivo is not None:
+            excluir_arquivo(id_arquivo=id_arquivo, cliente=banco_local)
+
+
+# ============================================================================
+# 11. TESTES DE CONSULTA PAGINADA (KEYSET / CURSOR PAGINATION)
+# ============================================================================
+def _criar_cliente_paginado_fake(dados_retorno):
+    """Cria um mock fluente do query builder do Supabase registrando todas as chamadas."""
+    chamadas = []
+
+    class QueryBuilderFake:
+        def select(self, colunas):
+            chamadas.append(("select", colunas))
+            return self
+
+        def eq(self, coluna, valor):
+            chamadas.append(("eq", coluna, valor))
+            return self
+
+        def in_(self, coluna, valores):
+            chamadas.append(("in_", coluna, list(valores)))
+            return self
+
+        def gte(self, coluna, valor):
+            chamadas.append(("gte", coluna, valor))
+            return self
+
+        def lte(self, coluna, valor):
+            chamadas.append(("lte", coluna, valor))
+            return self
+
+        def lt(self, coluna, valor):
+            chamadas.append(("lt", coluna, valor))
+            return self
+
+        def order(self, coluna, desc=False):
+            chamadas.append(("order", coluna, desc))
+            return self
+
+        def limit(self, tamanho):
+            chamadas.append(("limit", tamanho))
+            return self
+
+        def execute(self):
+            chamadas.append(("execute",))
+            resposta = MagicMock()
+            resposta.data = dados_retorno
+            return resposta
+
+    cliente = MagicMock()
+    cliente.table.side_effect = lambda nome: chamadas.append(("table", nome)) or QueryBuilderFake()
+    return cliente, chamadas
+
+
+def test_deve_paginar_primeira_pagina_desc_e_retornar_next_cursor():
+    """Sem cursor e com limite+1 registros retornados, devolve has_next=True e next_cursor do último item."""
+    dados_banco = [{"id": 103}, {"id": 102}, {"id": 101}]
+    cliente, chamadas = _criar_cliente_paginado_fake(dados_banco)
+
+    resultado = consultar_registros_paginados(
+        tabela="ocorrencias_crimes",
+        limite=2,
+        cliente=cliente,
+    )
+
+    assert resultado == {
+        "items": [{"id": 103}, {"id": 102}],
+        "pagination": {
+            "limit": 2,
+            "next_cursor": 102,
+            "has_next": True,
+        },
+    }
+    assert ("table", "ocorrencias_crimes") in chamadas
+    assert ("order", "id", True) in chamadas
+    assert ("limit", 3) in chamadas
+    assert not any(c[0] == "lt" for c in chamadas)
+
+
+def test_deve_paginar_com_cursor_e_encerrar_quando_nao_houver_proxima_pagina():
+    """Com cursor, aplica lt(coluna_cursor, cursor) e devolve has_next=False quando retorna < limite+1."""
+    dados_banco = [{"id": 101}]
+    cliente, chamadas = _criar_cliente_paginado_fake(dados_banco)
+
+    resultado = consultar_registros_paginados(
+        tabela="ocorrencias_crimes",
+        limite=2,
+        cursor=102,
+        cliente=cliente,
+    )
+
+    assert resultado == {
+        "items": [{"id": 101}],
+        "pagination": {
+            "limit": 2,
+            "next_cursor": None,
+            "has_next": False,
+        },
+    }
+    assert ("lt", "id", 102) in chamadas
+    assert ("order", "id", True) in chamadas
+    assert ("limit", 3) in chamadas
+
+
+def test_deve_retornar_has_next_false_quando_quantidade_for_exatamente_igual_ao_limite():
+    """Fronteira exata (len(dados) == limite): não há próxima página."""
+    dados_banco = [{"id": 20}, {"id": 19}]
+    cliente, _ = _criar_cliente_paginado_fake(dados_banco)
+
+    resultado = consultar_registros_paginados(
+        tabela="ocorrencias_crimes",
+        limite=2,
+        cliente=cliente,
+    )
+
+    assert resultado["items"] == dados_banco
+    assert resultado["pagination"] == {
+        "limit": 2,
+        "next_cursor": None,
+        "has_next": False,
+    }
+
+
+def test_deve_retornar_lista_vazia_e_paginacao_encerrada_quando_nao_houver_registros():
+    """Quando o banco retorna [], items fica vazio e pagination indica fim."""
+    cliente, _ = _criar_cliente_paginado_fake([])
+
+    resultado = consultar_registros_paginados(
+        tabela="ocorrencias_crimes",
+        limite=10,
+        cliente=cliente,
+    )
+
+    assert resultado == {
+        "items": [],
+        "pagination": {
+            "limit": 10,
+            "next_cursor": None,
+            "has_next": False,
+        },
+    }
+
+
+def test_deve_usar_limite_padrao_quando_limite_for_omitido():
+    """Sem informar limite, usa LIMITE_PADRAO_PAGINACAO (100) e solicita 101 linhas."""
+    cliente, chamadas = _criar_cliente_paginado_fake([])
+
+    resultado = consultar_registros_paginados(
+        tabela="ocorrencias_crimes",
+        cliente=cliente,
+    )
+
+    assert resultado["pagination"]["limit"] == LIMITE_PADRAO_PAGINACAO
+    assert ("limit", LIMITE_PADRAO_PAGINACAO + 1) in chamadas
+
+
+def test_deve_aplicar_filtros_combinados_in_datas_colunas_e_coluna_cursor_customizada():
+    """Valida eq, in_, gte/lte, lt, colunas específicas e coluna_cursor customizada."""
+    dados_banco = [
+        {"codigo": 50, "municipio": "Fortaleza"},
+        {"codigo": 40, "municipio": "Sobral"},
+        {"codigo": 30, "municipio": "Caucaia"},
+    ]
+    cliente, chamadas = _criar_cliente_paginado_fake(dados_banco)
+
+    resultado = consultar_registros_paginados(
+        tabela="vw_ocorrencias_publicadas",
+        filtros={"municipio": "Fortaleza"},
+        filtros_in={"tipo_crime": ("FURTO", "CVP")},
+        limite=2,
+        cursor=60,
+        coluna_cursor="codigo",
+        coluna_data="data_fato",
+        data_inicio="2026-01-01",
+        data_fim="2026-12-31",
+        colunas="codigo, municipio",
+        cliente=cliente,
+    )
+
+    assert resultado["items"] == dados_banco[:2]
+    assert resultado["pagination"] == {
+        "limit": 2,
+        "next_cursor": 40,
+        "has_next": True,
+    }
+    assert ("select", "codigo, municipio") in chamadas
+    assert ("eq", "municipio", "Fortaleza") in chamadas
+    assert ("in_", "tipo_crime", ["FURTO", "CVP"]) in chamadas
+    assert ("gte", "data_fato", "2026-01-01") in chamadas
+    assert ("lte", "data_fato", "2026-12-31") in chamadas
+    assert ("lt", "codigo", 60) in chamadas
+    assert ("order", "codigo", True) in chamadas
+    assert ("limit", 3) in chamadas
+
+
+@pytest.mark.parametrize("tabela_invalida", ["", "   ", None])
+def test_deve_rejeitar_tabela_invalida_na_paginacao(tabela_invalida):
+    with pytest.raises(ValueError):
+        consultar_registros_paginados(tabela=tabela_invalida)
+
+
+@pytest.mark.parametrize("coluna_cursor_invalida", ["", "   ", None])
+def test_deve_rejeitar_coluna_cursor_invalida_na_paginacao(coluna_cursor_invalida):
+    with pytest.raises(ValueError):
+        consultar_registros_paginados(
+            tabela="ocorrencias_crimes",
+            coluna_cursor=coluna_cursor_invalida,
+        )
+
+
+@pytest.mark.parametrize(
+    "limite_invalido",
+    [0, -1, LIMITE_MAXIMO_PAGINACAO + 1, True, False, 1.5, "10", None],
+)
+def test_deve_rejeitar_limite_invalido_na_paginacao(limite_invalido):
+    with pytest.raises(ValueError):
+        consultar_registros_paginados(
+            tabela="ocorrencias_crimes",
+            limite=limite_invalido,
+        )
+
+
+@pytest.mark.parametrize("cursor_invalido", [0, -1, True, False, 1.5, "10"])
+def test_deve_rejeitar_cursor_invalido_na_paginacao(cursor_invalido):
+    with pytest.raises(ValueError):
+        consultar_registros_paginados(
+            tabela="ocorrencias_crimes",
+            cursor=cursor_invalido,
+        )
+
+
+@pytest.mark.parametrize(
+    "filtros_in_invalido",
+    [
+        {"tipo_crime": []},
+        {"tipo_crime": ()},
+        {"tipo_crime": "FURTO"},
+        {"tipo_crime": None},
+        {"tipo_crime": 123},
+    ],
+)
+def test_deve_rejeitar_filtros_in_invalido_na_paginacao(filtros_in_invalido):
+    with pytest.raises(ValueError):
+        consultar_registros_paginados(
+            tabela="ocorrencias_crimes",
+            filtros_in=filtros_in_invalido,
+        )
+
+
+@pytest.mark.parametrize("colunas_invalida", ["", "   ", "municipio,data_fato"])
+def test_deve_rejeitar_colunas_invalidas_ou_sem_cursor_na_paginacao(colunas_invalida):
+    with pytest.raises(ValueError):
+        consultar_registros_paginados(
+            tabela="ocorrencias_crimes",
+            colunas=colunas_invalida,
+        )
+
+
+def test_deve_lancar_erro_operacao_banco_quando_consulta_paginada_falhar(caplog):
+    """Valida exceção e log ERROR quando a execução no Supabase falha."""
+    cliente_falso = MagicMock()
+    cliente_falso.table.side_effect = RuntimeError("timeout na consulta")
+
+    with caplog.at_level(logging.ERROR):
+        with pytest.raises(ErroOperacaoBanco) as contexto:
+            consultar_registros_paginados(
+                tabela="ocorrencias_crimes",
+                cliente=cliente_falso,
+            )
+
+    assert contexto.value.operacao == "consulta_paginada"
+    assert contexto.value.tabela == "ocorrencias_crimes"
+    assert "timeout na consulta" in str(contexto.value)
+    assert any(record.levelname == "ERROR" for record in caplog.records)
+
+
+def test_deve_lancar_erro_operacao_banco_quando_cursor_nao_vier_no_retorno(caplog):
+    """Se has_next=True mas o último item não contém a coluna_cursor, lança ErroOperacaoBanco."""
+    dados_sem_id = [{"municipio": "Fortaleza"}, {"municipio": "Sobral"}, {"municipio": "Caucaia"}]
+    cliente, _ = _criar_cliente_paginado_fake(dados_sem_id)
+
+    with caplog.at_level(logging.ERROR):
+        with pytest.raises(ErroOperacaoBanco) as contexto:
+            consultar_registros_paginados(
+                tabela="ocorrencias_crimes",
+                limite=2,
+                cliente=cliente,
+            )
+
+    assert contexto.value.operacao == "consulta_paginada"
+    assert contexto.value.tabela == "ocorrencias_crimes"
+    assert "coluna de cursor" in str(contexto.value)
+    assert any(record.levelname == "ERROR" for record in caplog.records)
+
+
+@pytest.mark.database
+def test_deve_percorrer_todas_as_paginas_em_ordem_desc_sem_duplicatas(banco_local):
+    """Integração: insere 5 ocorrências e percorre todas as páginas com limite=2 em ordem DESC."""
+    hash_unico = hashlib.sha256(str(uuid.uuid4()).encode()).hexdigest()
+    id_arquivo = None
+    try:
+        arquivo = inserir_registros(
+            tabela="informacoes_arquivo",
+            dados={
+                "nome_arquivo": "teste_paginacao_desc.xlsx",
+                "url_download": "https://exemplo.sspds.ce.gov.br/teste_paginacao.xlsx",
+                "hash_sha256": hash_unico,
+                "tipo_crime": "cvli",
+            },
+            cliente=banco_local,
+        )
+        id_arquivo = arquivo[0]["id"]
+
+        inseridos = inserir_registros(
+            tabela="ocorrencias_crimes",
+            dados=[
+                {
+                    "arquivo_id": id_arquivo,
+                    "tipo_crime": "cvli",
+                    "municipio": f"Municipio {i}",
+                    "data_fato": f"2026-05-0{i}",
+                }
+                for i in range(1, 6)
+            ],
+            cliente=banco_local,
+        )
+        ids_esperados = sorted((r["id"] for r in inseridos), reverse=True)
+
+        p1 = consultar_registros_paginados(
+            tabela="ocorrencias_crimes",
+            filtros={"arquivo_id": id_arquivo},
+            limite=2,
+            cliente=banco_local,
+        )
+        assert len(p1["items"]) == 2
+        assert p1["pagination"]["limit"] == 2
+        assert p1["pagination"]["has_next"] is True
+        assert p1["pagination"]["next_cursor"] == p1["items"][-1]["id"]
+
+        p2 = consultar_registros_paginados(
+            tabela="ocorrencias_crimes",
+            filtros={"arquivo_id": id_arquivo},
+            limite=2,
+            cursor=p1["pagination"]["next_cursor"],
+            cliente=banco_local,
+        )
+        assert len(p2["items"]) == 2
+        assert p2["pagination"]["has_next"] is True
+        assert p2["pagination"]["next_cursor"] == p2["items"][-1]["id"]
+
+        p3 = consultar_registros_paginados(
+            tabela="ocorrencias_crimes",
+            filtros={"arquivo_id": id_arquivo},
+            limite=2,
+            cursor=p2["pagination"]["next_cursor"],
+            cliente=banco_local,
+        )
+        assert len(p3["items"]) == 1
+        assert p3["pagination"]["has_next"] is False
+        assert p3["pagination"]["next_cursor"] is None
+
+        ids_recebidos = [item["id"] for pagina in (p1, p2, p3) for item in pagina["items"]]
+        assert ids_recebidos == ids_esperados
+    finally:
+        if id_arquivo is not None:
+            excluir_arquivo(id_arquivo=id_arquivo, cliente=banco_local)
+
+
+@pytest.mark.database
+def test_deve_paginar_view_publicada_com_filtros_in(banco_local):
+    """Integração: pagina vw_ocorrencias_publicadas combinando filtros de igualdade e filtros_in."""
+    hash_unico = hashlib.sha256(str(uuid.uuid4()).encode()).hexdigest()
+    id_arquivo = None
+    try:
+        arquivo = inserir_registros(
+            tabela="informacoes_arquivo",
+            dados={
+                "nome_arquivo": "teste_paginacao_view_in.xlsx",
+                "url_download": "https://exemplo.sspds.ce.gov.br/teste_paginacao_view.xlsx",
+                "hash_sha256": hash_unico,
+                "tipo_crime": "FURTO",
+                "periodo_dados": "2026",
+            },
+            cliente=banco_local,
+        )
+        id_arquivo = arquivo[0]["id"]
+
+        inserir_registros(
+            tabela="ocorrencias_crimes",
+            dados=[
+                {"arquivo_id": id_arquivo, "tipo_crime": "FURTO", "municipio": "Fortaleza", "data_fato": "2026-06-01"},
+                {"arquivo_id": id_arquivo, "tipo_crime": "CVP", "municipio": "Caucaia", "data_fato": "2026-06-02"},
+                {"arquivo_id": id_arquivo, "tipo_crime": "INCENDIO", "municipio": "Sobral", "data_fato": "2026-06-03"},
+            ],
+            cliente=banco_local,
+        )
+
+        pagina = consultar_registros_paginados(
+            tabela="vw_ocorrencias_publicadas",
+            filtros={"arquivo_id": id_arquivo},
+            filtros_in={"tipo_crime": ["FURTO", "CVP"]},
+            limite=10,
+            cliente=banco_local,
+        )
+
+        assert pagina["pagination"] == {
+            "limit": 10,
+            "next_cursor": None,
+            "has_next": False,
+        }
+        assert len(pagina["items"]) == 2
+        assert pagina["items"][0]["id"] > pagina["items"][1]["id"]
+        assert {item["tipo_crime"] for item in pagina["items"]} == {"FURTO", "CVP"}
     finally:
         if id_arquivo is not None:
             excluir_arquivo(id_arquivo=id_arquivo, cliente=banco_local)

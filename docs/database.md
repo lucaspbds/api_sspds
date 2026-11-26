@@ -425,7 +425,7 @@ Define as exceções customizadas de domínio para padronizar o tratamento de fa
 
 - **`VariavelAmbienteNaoEncontrada(Exception)`**: Disparada quando uma variável de ambiente obrigatória (`SUPABASE_URL` ou `SUPABASE_KEY`) não é encontrada. Armazena o atributo `nome_variavel`.
 - **`ErroConexaoBanco(Exception)`**: Disparada quando não é possível inicializar o cliente ou estabelecer comunicação com o Supabase.
-- **`ErroOperacaoBanco(Exception)`**: Disparada quando uma operação de leitura (`consulta`), inserção (`insercao`), atualização (`atualizacao`), exclusão (`exclusao`) ou contagem (`contagem`) falha no banco de dados. Armazena os atributos `operacao`, `tabela` e `detalhe` (mensagem técnica opcional da exceção original).
+- **`ErroOperacaoBanco(Exception)`**: Disparada quando uma operação de leitura (`consulta`, `consulta_paginada`), inserção (`insercao`), atualização (`atualizacao`), exclusão (`exclusao`) ou contagem (`contagem`) falha no banco de dados. Armazena os atributos `operacao`, `tabela` e `detalhe` (mensagem técnica opcional da exceção original).
 
 ---
 
@@ -465,6 +465,39 @@ Módulo principal responsável pelas operações de conexão e persistência no 
 - **Exceções:**
   - `ValueError`: Se o nome da tabela for vazio ou se `limite` for menor ou igual a zero.
   - `ErroOperacaoBanco`: Se ocorrer falha durante a execução da consulta no Supabase.
+
+#### Constantes de Paginação
+- `LIMITE_PADRAO_PAGINACAO = 100`: Quantidade padrão de itens retornados por página quando `limite` é omitido.
+- `LIMITE_MAXIMO_PAGINACAO = 500`: Teto máximo permitido por página (garante que `limite + 1` permaneça abaixo do limite padrão de 1000 linhas do PostgREST/Supabase).
+
+#### `consultar_registros_paginados(tabela: str, filtros: Optional[Dict[str, Any]] = None, filtros_in: Optional[Dict[str, Sequence[Any]]] = None, limite: int = LIMITE_PADRAO_PAGINACAO, cursor: Optional[int] = None, coluna_cursor: str = "id", coluna_data: Optional[str] = None, data_inicio: Optional[Any] = None, data_fim: Optional[Any] = None, colunas: str = "*", cliente: Optional[Client] = None) -> Dict[str, Any]`
+- **Descrição:** Realiza leitura paginada (`SELECT`) usando a estratégia **Keyset / Cursor Pagination** em ordem decrescente (`ORDER BY <coluna_cursor> DESC`, mais recentes primeiro). Quando `cursor` é informado, filtra `WHERE <coluna_cursor> < cursor`. Aplica a técnica `limite + 1` para calcular `has_next` e `next_cursor` em uma única ida ao banco, sem `COUNT` adicional.
+- **Parâmetros:**
+  - `tabela` (`str`): Nome da tabela ou view a ser consultada.
+  - `filtros` (`Optional[Dict[str, Any]]`): Dicionário de pares `{coluna: valor}` para igualdade (`WHERE coluna = valor`).
+  - `filtros_in` (`Optional[Dict[str, Sequence[Any]]]`): Dicionário de pares `{coluna: sequencia}` para filtro por inclusão (`WHERE coluna IN (...)`), útil em consultas multi-tipo como `/crimes/operacionais` e `/crimes/vitimas`.
+  - `limite` (`int`): Quantidade máxima de registros na página (padrão `100`, máximo `500`).
+  - `cursor` (`Optional[int]`): Valor da coluna de cursor do último item da página anterior (inteiro `> 0`); omitir na primeira página.
+  - `coluna_cursor` (`str`): Coluna inteira usada na ordenação e no cursor (padrão `'id'`).
+  - `coluna_data` (`Optional[str]`): Coluna temporal para filtro de intervalo (`'data_fato'`, `'criado_em'`).
+  - `data_inicio` / `data_fim` (`Optional[Any]`): Limites inclusivos (`>=` / `<=`) sobre `coluna_data`.
+  - `colunas` (`str`): Colunas selecionadas separadas por vírgula (padrão `'*'`); se explícitas, devem incluir `coluna_cursor`.
+  - `cliente` (`Optional[Client]`): Instância opcional do cliente Supabase.
+- **Retorno:** `Dict[str, Any]` no padrão:
+  ```json
+  {
+    "items": [ ... ],
+    "pagination": {
+      "limit": 100,
+      "next_cursor": 105420,
+      "has_next": true
+    }
+  }
+  ```
+  (`next_cursor` é `null` quando `has_next` é `false`.)
+- **Exceções:**
+  - `ValueError`: Se `tabela`, `coluna_cursor`, `colunas` (vazia ou sem a coluna do cursor), `limite` (fora de `1..500`, `bool` ou não inteiro), `cursor` (`<= 0`, `bool` ou não inteiro) ou `filtros_in` (vazio ou escalar) forem inválidos.
+  - `ErroOperacaoBanco`: Se ocorrer falha na execução da consulta ou se a coluna de cursor não estiver presente no retorno quando houver próxima página.
 
 #### `inserir_registros(tabela: str, dados: Union[Dict[str, Any], List[Dict[str, Any]]], cliente: Optional[Client] = None) -> List[Dict[str, Any]]`
 - **Descrição:** Realiza a inserção (`INSERT`) de um único registro ou de múltiplos registros em lote em uma tabela do banco.

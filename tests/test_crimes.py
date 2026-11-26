@@ -1,6 +1,7 @@
+import pytest
 from fastapi.testclient import TestClient
-from app.main import app  
-
+from app.main import app
+from app.services.crime_service import CrimeService
 client = TestClient(app)
 
 def test_listar_cvli_sem_limite():
@@ -138,3 +139,54 @@ def test_rotas_especificas_idade_negativa_invalida():
     for rota in ("/crimes/cvli", "/crimes/preconceito", "/crimes/vitimas"):
         response = client.get(f"{rota}?vitima_idade=-1")
         assert response.status_code == 422
+
+def test_rotas_especificas_sem_banco_retornam_404(monkeypatch):
+    """Testa retorno 404 nas rotas específicas quando o serviço não encontra registros."""
+    monkeypatch.setattr(CrimeService, "listar_por_tipo", lambda **kwargs: [])
+    monkeypatch.setattr(CrimeService, "listar_por_tipos", lambda **kwargs: [])
+
+    for rota in ("/crimes/cvli", "/crimes/preconceito", "/crimes/operacionais", "/crimes/vitimas"):
+        response = client.get(rota)
+        assert response.status_code == 404
+
+
+def test_listar_cvli_mockado_valida_filtros_e_schema(monkeypatch):
+    """Testa repasse de filtros em /crimes/cvli e serialização do schema CvliResponse."""
+    capturado = {}
+
+    def fake_listar_por_tipo(**kwargs):
+        capturado.update(kwargs)
+        return [
+            {
+                "tipo_crime": "CRIMES VIOLENTOS LETAIS E INTENCIONAIS - CVLI",
+                "ais": "AIS 01",
+                "municipio": "Fortaleza",
+                "data_fato": "2024-05-10",
+                "hora_fato": "21:30:00",
+                "dia_semana": "Sexta-feira",
+                "st_dia_semana_divergente": False,
+                "st_idade_invalida": False,
+                "vitima_genero": "Masculino",
+                "vitima_idade": "Não Informada",
+                "vitima_escolaridade": "Ensino Médio",
+                "vitima_raca": "Parda",
+                "natureza": "Homicídio",
+                "meio_empregado": "Arma de fogo",
+            }
+        ]
+
+    monkeypatch.setattr(CrimeService, "listar_por_tipo", fake_listar_por_tipo)
+
+    response = client.get(
+        "/crimes/cvli",
+        params={"municipio": "Fortaleza", "vitima_idade": 0, "limit": 1},
+    )
+
+    assert response.status_code == 200
+    assert capturado["municipio"] == "Fortaleza"
+    assert capturado["vitima_idade"] == 0
+    assert capturado["limit"] == 1
+    dados = response.json()
+    assert len(dados) == 1
+    # Valida que "Não Informada" em vitima_idade vira null no schema CvliResponse
+    assert dados[0]["vitima_idade"] is None

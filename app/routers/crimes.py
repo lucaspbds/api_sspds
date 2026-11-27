@@ -25,7 +25,7 @@ _EXEMPLO_422_LIMIT: Dict[str, Any] = {
         {
             "type": "int_parsing",
             "loc": ["query", "limit"],
-            "msg": "Input should be a valid integer, unable to parse string as an integer",
+            "msg": "A entrada deve ser um número inteiro válido; não foi possível analisar a string como um número inteiro.",
             "input": "abc",
         }
     ],
@@ -37,7 +37,7 @@ _EXEMPLO_422_DATA: Dict[str, Any] = {
         {
             "type": "date_from_datetime_parsing",
             "loc": ["query", "data_inicio"],
-            "msg": "Input should be a valid date or datetime, invalid character in year",
+            "msg": "A entrada deve ser uma data ou hora válida; caracteres inválidos no ano podem ser considerados inválidos.",
             "input": "invalid-date",
         }
     ],
@@ -155,14 +155,50 @@ def listar_crimes_geral(
     response_model=List[CvliResponse],
     summary="Listar Crimes Violentos Letais Intencionais (CVLI)",
     description="Retorna ocorrências específicas de CVLI formatadas com o schema de vítimas e meios empregados.",
-    responses=_respostas("Nenhum dado de CVLI encontrado."),
+    responses=_respostas("Nenhum dado de CVLI encontrado.", _EXEMPLO_422_DATA),
 )
-def listar_cvli(limit: LimitParam = None):
+def listar_cvli(
+    municipio: Optional[str] = Query(
+        None, min_length=1, max_length=100,
+        description="Filtrar por nome do município (sem diferenciar maiúsculas/minúsculas)",
+    ),
+    ais: Optional[str] = Query(None, max_length=30, description="Filtrar por AIS (ex.: AIS 01)"),
+    dia_semana: Optional[str] = Query(None, max_length=30, description="Filtrar por dia da semana"),
+    natureza: Optional[str] = Query(None, max_length=150, description="Filtrar por tipificação detalhada"),
+    meio_empregado: Optional[str] = Query(None, max_length=100, description="Filtrar por meio empregado"),
+    vitima_genero: Optional[str] = Query(None, max_length=50, description="Filtrar por gênero da vítima"),
+    vitima_raca: Optional[str] = Query(None, max_length=50, description="Filtrar por raça/cor da vítima"),
+    vitima_idade: Optional[int] = Query(None, ge=0, description="Filtrar pela idade da vítima"),
+    vitima_escolaridade: Optional[str] = Query(None, max_length=100, description="Filtrar pela escolaridade da vítima"),
+    data_inicio: Optional[date] = Query(None, description="Data inicial (inclusiva) no formato AAAA-MM-DD"),
+    data_fim: Optional[date] = Query(None, description="Data final (inclusiva) no formato AAAA-MM-DD"),
+    limit: LimitParam = None,
+):
     """
     Lista ocorrências de CVLI.
     Se o parâmetro 'limit' não for informado, retorna todos os registros.
     """
-    dados = CrimeService.listar_por_tipo(tipo=TIPO_CVLI, limit=limit)
+    if data_inicio and data_fim and data_inicio > data_fim:
+        raise HTTPException(
+            status_code=422,
+            detail="data_inicio não pode ser posterior a data_fim.",
+        )
+
+    dados = CrimeService.listar_por_tipo(
+        tipo=TIPO_CVLI,
+        municipio=municipio,
+        ais=ais,
+        dia_semana=dia_semana,
+        natureza=natureza,
+        meio_empregado=meio_empregado,
+        vitima_genero=vitima_genero,
+        vitima_raca=vitima_raca,
+        vitima_idade=vitima_idade,
+        vitima_escolaridade=vitima_escolaridade,
+        data_inicio=data_inicio,
+        data_fim=data_fim,
+        limit=limit,
+    )
     if not dados:
         raise HTTPException(
             status_code=404,
@@ -177,13 +213,53 @@ def listar_cvli(limit: LimitParam = None):
     response_model=List[PreconceitoResponse],
     summary="Listar crimes de preconceito (Homofobia e Transfobia)",
     description="Retorna ocorrências detalhadas de crimes motivados por preconceito com foco em identidade de gênero e orientação sexual.",
-    responses=_respostas("Nenhum crime de preconceito encontrado."),
+    responses=_respostas("Nenhum crime de preconceito encontrado.", _EXEMPLO_422_DATA),
 )
-def listar_preconceito(limit: LimitParam = None):
+def listar_preconceito(
+    municipio: Optional[str] = Query(
+        None, min_length=1, max_length=100,
+        description="Filtrar por nome do município (sem diferenciar maiúsculas/minúsculas)",
+    ),
+    ais: Optional[str] = Query(None, max_length=30, description="Filtrar por AIS (ex.: AIS 01)"),
+    dia_semana: Optional[str] = Query(None, max_length=30, description="Filtrar por dia da semana"),
+    natureza: Optional[str] = Query(None, max_length=150, description="Filtrar por tipificação detalhada"),
+    local_fato: Optional[str] = Query(None, max_length=150, description="Filtrar pelo local do fato"),
+    vitima_genero: Optional[str] = Query(None, max_length=50, description="Filtrar por gênero da vítima"),
+    vitima_orientacao_sexual: Optional[str] = Query(
+        None, max_length=50, description="Filtrar pela orientação sexual da vítima"
+    ),
+    vitima_raca: Optional[str] = Query(None, max_length=50, description="Filtrar por raça/cor da vítima"),
+    vitima_idade: Optional[int] = Query(None, ge=0, description="Filtrar pela idade da vítima"),
+    vitima_escolaridade: Optional[str] = Query(None, max_length=100, description="Filtrar pela escolaridade da vítima"),
+    data_inicio: Optional[date] = Query(None, description="Data inicial (inclusiva) no formato AAAA-MM-DD"),
+    data_fim: Optional[date] = Query(None, description="Data final (inclusiva) no formato AAAA-MM-DD"),
+    limit: LimitParam = None,
+):
     """
     Lista ocorrências de crimes de preconceito.
     """
-    dados = CrimeService.listar_por_tipo(tipo=TIPO_PRECONCEITO, limit=limit)
+    if data_inicio and data_fim and data_inicio > data_fim:
+        raise HTTPException(
+            status_code=422,
+            detail="data_inicio não pode ser posterior a data_fim.",
+        )
+
+    dados = CrimeService.listar_por_tipo(
+        tipo=TIPO_PRECONCEITO,
+        municipio=municipio,
+        ais=ais,
+        dia_semana=dia_semana,
+        natureza=natureza,
+        local_fato=local_fato,
+        vitima_genero=vitima_genero,
+        vitima_orientacao_sexual=vitima_orientacao_sexual,
+        vitima_raca=vitima_raca,
+        vitima_idade=vitima_idade,
+        vitima_escolaridade=vitima_escolaridade,
+        data_inicio=data_inicio,
+        data_fim=data_fim,
+        limit=limit,
+    )
     if not dados:
         raise HTTPException(
             status_code=404,
@@ -202,13 +278,37 @@ def listar_preconceito(limit: LimitParam = None):
         "(Furto e Crimes Violentos contra o Patrimônio - CVP). "
         "O campo `tipo_crime` identifica a categoria de cada registro."
     ),
-    responses=_respostas("Nenhum registro operacional encontrado."),
+    responses=_respostas("Nenhum registro operacional encontrado.", _EXEMPLO_422_DATA),
 )
-def listar_operacionais(limit: LimitParam = None):
+def listar_operacionais(
+    municipio: Optional[str] = Query(
+        None, min_length=1, max_length=100,
+        description="Filtrar por nome do município (sem diferenciar maiúsculas/minúsculas)",
+    ),
+    ais: Optional[str] = Query(None, max_length=30, description="Filtrar por AIS (ex.: AIS 01)"),
+    dia_semana: Optional[str] = Query(None, max_length=30, description="Filtrar por dia da semana"),
+    data_inicio: Optional[date] = Query(None, description="Data inicial (inclusiva) no formato AAAA-MM-DD"),
+    data_fim: Optional[date] = Query(None, description="Data final (inclusiva) no formato AAAA-MM-DD"),
+    limit: LimitParam = None,
+):
     """
     Lista ocorrências de crimes operacionais (Furto e CVP).
     """
-    dados = CrimeService.listar_por_tipos(tipos=TIPOS_OPERACIONAIS, limit=limit)
+    if data_inicio and data_fim and data_inicio > data_fim:
+        raise HTTPException(
+            status_code=422,
+            detail="data_inicio não pode ser posterior a data_fim.",
+        )
+
+    dados = CrimeService.listar_por_tipos(
+        tipos=TIPOS_OPERACIONAIS,
+        municipio=municipio,
+        ais=ais,
+        dia_semana=dia_semana,
+        data_inicio=data_inicio,
+        data_fim=data_fim,
+        limit=limit,
+    )
     if not dados:
         raise HTTPException(
             status_code=404,
@@ -227,13 +327,45 @@ def listar_operacionais(limit: LimitParam = None):
         "(Lei Maria da Penha, Crimes Sexuais e Indígenas Vítimas de Crimes). "
         "O campo `tipo_crime` identifica a categoria de cada registro."
     ),
-    responses=_respostas("Nenhum registro de crime com vítima encontrado."),
+    responses=_respostas("Nenhum registro de crime com vítima encontrado.", _EXEMPLO_422_DATA),
 )
-def listar_crimes_com_vitima(limit: LimitParam = None):
+def listar_crimes_com_vitima(
+    municipio: Optional[str] = Query(
+        None, min_length=1, max_length=100,
+        description="Filtrar por nome do município (sem diferenciar maiúsculas/minúsculas)",
+    ),
+    ais: Optional[str] = Query(None, max_length=30, description="Filtrar por AIS (ex.: AIS 01)"),
+    dia_semana: Optional[str] = Query(None, max_length=30, description="Filtrar por dia da semana"),
+    vitima_genero: Optional[str] = Query(None, max_length=50, description="Filtrar por gênero da vítima"),
+    vitima_raca: Optional[str] = Query(None, max_length=50, description="Filtrar por raça/cor da vítima"),
+    vitima_idade: Optional[int] = Query(None, ge=0, description="Filtrar pela idade da vítima"),
+    vitima_escolaridade: Optional[str] = Query(None, max_length=100, description="Filtrar pela escolaridade da vítima"),
+    data_inicio: Optional[date] = Query(None, description="Data inicial (inclusiva) no formato AAAA-MM-DD"),
+    data_fim: Optional[date] = Query(None, description="Data final (inclusiva) no formato AAAA-MM-DD"),
+    limit: LimitParam = None,
+):
     """
-    Lista ocorrências de crimes com perfil de vítima (Maria da Penha, Sexuais e Indígenas).
+    Lista ocorrências de crimes com perfil de vítima (Maria da Penha, Sexuais, Indígenas).
     """
-    dados = CrimeService.listar_por_tipos(tipos=TIPOS_COM_VITIMA, limit=limit)
+    if data_inicio and data_fim and data_inicio > data_fim:
+        raise HTTPException(
+            status_code=422,
+            detail="data_inicio não pode ser posterior a data_fim.",
+        )
+
+    dados = CrimeService.listar_por_tipos(
+        tipos=TIPOS_COM_VITIMA,
+        municipio=municipio,
+        ais=ais,
+        dia_semana=dia_semana,
+        vitima_genero=vitima_genero,
+        vitima_raca=vitima_raca,
+        vitima_idade=vitima_idade,
+        vitima_escolaridade=vitima_escolaridade,
+        data_inicio=data_inicio,
+        data_fim=data_fim,
+        limit=limit,
+    )
     if not dados:
         raise HTTPException(
             status_code=404,

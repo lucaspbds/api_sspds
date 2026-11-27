@@ -146,6 +146,41 @@ def _consultar(
     return dados
 
 
+def _montar_filtros_especificos(
+    *,
+    municipio: Optional[str] = None,
+    ais: Optional[str] = None,
+    dia_semana: Optional[str] = None,
+    natureza: Optional[str] = None,
+    local_fato: Optional[str] = None,
+    meio_empregado: Optional[str] = None,
+    vitima_genero: Optional[str] = None,
+    vitima_orientacao_sexual: Optional[str] = None,
+    vitima_raca: Optional[str] = None,
+    vitima_idade: Optional[int] = None,
+    vitima_escolaridade: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Monta o dicionário de filtros normalizados para rotas específicas."""
+    candidatos_texto: Dict[str, Optional[str]] = {
+        "municipio": _normalizar_texto(municipio),
+        "ais": _normalizar_texto(ais),
+        "dia_semana": _normalizar_texto(dia_semana),
+        "natureza": _normalizar_texto(natureza),
+        "local_fato": _normalizar_texto(local_fato),
+        "meio_empregado": _normalizar_texto(meio_empregado),
+        "vitima_genero": _normalizar_texto(vitima_genero),
+        "vitima_orientacao_sexual": _normalizar_texto(vitima_orientacao_sexual),
+        "vitima_raca": _normalizar_texto(vitima_raca),
+        "vitima_escolaridade": _normalizar_texto(vitima_escolaridade),
+    }
+    filtros: Dict[str, Any] = {
+        coluna: valor for coluna, valor in candidatos_texto.items() if valor
+    }
+    if vitima_idade is not None:
+        filtros["vitima_idade"] = vitima_idade
+    return filtros
+
+
 class CrimeService:
 
     @staticmethod
@@ -166,10 +201,10 @@ class CrimeService:
         """
         Consulta geral com filtros dinâmicos (todos opcionais e combináveis).
 
-        - `tipo_crime`: valor exato da coluna (maiúsculas e espaços extras normalizados).
-        - Demais filtros de texto: igualdade exata, sem diferenciar maiúsculas/minúsculas
+- `tipo_crime`: valor exato da coluna (maiúsculas e espaços extras normalizados).
+- Demais filtros de texto: igualdade exata, sem diferenciar maiúsculas/minúsculas
           (a entrada é normalizada para o padrão gravado pela ingestão).
-        - `data_inicio` / `data_fim`: período inclusivo sobre `data_fato`.
+- `data_inicio` / `data_fim`: período inclusivo sobre `data_fato`.
         """
         candidatos: Dict[str, Optional[str]] = {
             "municipio": _normalizar_texto(municipio),
@@ -192,24 +227,92 @@ class CrimeService:
         )
 
     @staticmethod
-    def listar_por_tipo(tipo: str, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+    def listar_por_tipo(
+        tipo: str,
+        limit: Optional[int] = None,
+        municipio: Optional[str] = None,
+        ais: Optional[str] = None,
+        dia_semana: Optional[str] = None,
+        natureza: Optional[str] = None,
+        local_fato: Optional[str] = None,
+        meio_empregado: Optional[str] = None,
+        vitima_genero: Optional[str] = None,
+        vitima_orientacao_sexual: Optional[str] = None,
+        vitima_raca: Optional[str] = None,
+        vitima_idade: Optional[int] = None,
+        vitima_escolaridade: Optional[str] = None,
+        data_inicio: Optional[date] = None,
+        data_fim: Optional[date] = None,
+    ) -> List[Dict[str, Any]]:
         """
         Consulta específica por **um** tipo de crime.
 
         O valor de `tipo` deve ser exatamente uma das strings presentes na coluna
         `tipo_crime` (veja as constantes `TIPO_*` deste módulo).
         """
-        return _consultar(tipos=[tipo], limite=limit)
+        filtros = _montar_filtros_especificos(
+            municipio=municipio,
+            ais=ais,
+            dia_semana=dia_semana,
+            natureza=natureza,
+            local_fato=local_fato,
+            meio_empregado=meio_empregado,
+            vitima_genero=vitima_genero,
+            vitima_orientacao_sexual=vitima_orientacao_sexual,
+            vitima_raca=vitima_raca,
+            vitima_idade=vitima_idade,
+            vitima_escolaridade=vitima_escolaridade,
+        )
+        return _consultar(
+            filtros=filtros,
+            tipos=[tipo],
+            data_inicio=data_inicio,
+            data_fim=data_fim,
+            limite=limit,
+        )
 
     @staticmethod
     def listar_por_tipos(
-        tipos: Sequence[str], limit: Optional[int] = None
+        tipos: Sequence[str],
+        limit: Optional[int] = None,
+        municipio: Optional[str] = None,
+        ais: Optional[str] = None,
+        dia_semana: Optional[str] = None,
+        natureza: Optional[str] = None,
+        local_fato: Optional[str] = None,
+        meio_empregado: Optional[str] = None,
+        vitima_genero: Optional[str] = None,
+        vitima_orientacao_sexual: Optional[str] = None,
+        vitima_raca: Optional[str] = None,
+        vitima_idade: Optional[int] = None,
+        vitima_escolaridade: Optional[str] = None,
+        data_inicio: Optional[date] = None,
+        data_fim: Optional[date] = None,
     ) -> List[Dict[str, Any]]:
         """
         Consulta específica por **vários** tipos de crime (filtro `IN`), como
         `TIPOS_OPERACIONAIS` e `TIPOS_COM_VITIMA`.
         """
-        return _consultar(tipos=tipos, limite=limit)
+        filtros = _montar_filtros_especificos(
+            municipio=municipio,
+            ais=ais,
+            dia_semana=dia_semana,
+            natureza=natureza,
+            local_fato=local_fato,
+            meio_empregado=meio_empregado,
+            vitima_genero=vitima_genero,
+            vitima_orientacao_sexual=vitima_orientacao_sexual,
+            vitima_raca=vitima_raca,
+            vitima_idade=vitima_idade,
+            vitima_escolaridade=vitima_escolaridade,
+        )
+        return _consultar(
+            filtros=filtros,
+            tipos=tipos,
+            data_inicio=data_inicio,
+            data_fim=data_fim,
+            limite=limit,
+        )
 
     @staticmethod
     def listar_ocorrencias(limit: Optional[int] = None) -> List[Dict[str, Any]]:

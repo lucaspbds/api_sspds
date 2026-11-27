@@ -92,6 +92,7 @@ Dependências externas ao pacote: `database/repository.py` (acesso ao Supabase) 
 ### 2.1 `config.py` e `helpers.py`
 
 - `get_variavel_ambiente(nome) -> str`: carrega o `.env` (python-dotenv) e devolve o valor. Lança `VariavelAmbienteNaoEncontrada` se a variável não existir ou estiver vazia.
+- `recorte_temporal(df) -> pd.DataFrame`: lê INTERVALO_MAXIMO_ANOS via `get_intervalo_maximo_anos()` e devolve df sem alterações se o valor for `None`; caso contrário, calcula `ano_minimo = ano_max - (intervalo_maximo_anos - 1)` a partir do maior ano encontrado e retorna o DataFrame filtrado com `ano >= ano_minimo`.
 - `recebeInteiro(valor) -> int`: converte para inteiro; lança `ValorInteiroInvalido` em `ValueError`/`TypeError`. Usada em `DOWNLOADER_TIMEOUT`, `CRAWLER_TIMEOUT` e `INSERT_CHUNK_SIZE` (valores inteiros simples).
 - `avaliar_expressao_inteira(expressao) -> int`: usada em `CHUNK_SIZE` e `HASH_CHUNK_SIZE`. Aceita aritmética simples (`"1024 * 64"`), mas **não usa `eval`**: interpreta a expressão via `ast` e só permite inteiros, `+`, `-`, `*`, `//`, sinal unário e parênteses. Potência, divisão `/`, nomes, chamadas de função, `float` e `bool` são rejeitados; o resultado absoluto é limitado a `10**12`. Qualquer violação, divisão por zero ou texto vazio → `ValorInteiroInvalido`.
 
@@ -375,11 +376,12 @@ A identidade lógica é `(tipo_crime, serie)`. A série corrente e a histórica 
 ### 4.1 Ordem de publicação (`carregar_arquivo`)
 
 1. Insere um novo registro em `informacoes_arquivo` com `periodo_dados = NULL` (versão anterior preservada). Grava `nome_arquivo`, `url_download`, `hash_sha256`, `tipo_crime`, `serie`, `ultimo_mes`, `tamanho_bytes`, `data_coleta` e `ingestao_id`.
-2. Normaliza (reutilizando o DataFrame lido na inspeção) e insere as ocorrências em lotes.
-3. Compara `contar_ocorrencias_por_arquivo` com a quantidade normalizada: divergência → `RuntimeError`.
-4. Para cada versão a substituir, compara as contagens: se a nova tiver **menos** ocorrências → `IntegridadeVersaoError` (publicação bloqueada, carga desfeita, `AVISO`).
-5. **Publica**: preenche `periodo_dados` e `atualizado_em` — a última etapa que marca o arquivo como completo.
-6. Só então exclui as versões substituídas. Se essa exclusão falhar, a nova versão permanece publicada, o erro é registrado em log e a reconciliação final cuida da limpeza.
+2. Caso os dados sejam da série histórica, será feito o recorte temporal dos dados de acordo com o valor da variável de ambiente INTERVALO_MAXIMO_ANOS (valor usado é 6).
+3. Normaliza (reutilizando o DataFrame lido na inspeção) e insere as ocorrências em lotes.
+4. Compara `contar_ocorrencias_por_arquivo` com a quantidade normalizada: divergência → `RuntimeError`.
+5. Para cada versão a substituir, compara as contagens: se a nova tiver **menos** ocorrências → `IntegridadeVersaoError` (publicação bloqueada, carga desfeita, `AVISO`).
+6. **Publica**: preenche `periodo_dados` e `atualizado_em` — a última etapa que marca o arquivo como completo.
+7. Só então exclui as versões substituídas. Se essa exclusão falhar, a nova versão permanece publicada, o erro é registrado em log e a reconciliação final cuida da limpeza.
 
 Falhas **antes** da publicação executam `desfazer_carga` (exclui o registro novo; o `ON DELETE CASCADE` remove as ocorrências). Se o desfazer também falhar, o registro fica com `periodo_dados` nulo, é tratado como incompleto e será reprocessado/purgado. Falhas **depois** da publicação mantêm a nova versão.
 
@@ -610,32 +612,44 @@ Assim as requisições HTTPS são feitas **sem desabilitar a validação** (`ver
 5. **Inspeção lê a planilha inteira antes da decisão.** O arquivo é lido uma vez para inspeção e o mesmo DataFrame é reutilizado na normalização; planilhas ignoradas por hash não chegam a ser lidas.
 6. **`INSERT_CHUNK_SIZE` aceita só inteiro simples** (usa `recebeInteiro`); expressões aritméticas valem apenas em `CHUNK_SIZE` e `HASH_CHUNK_SIZE`.
 
-### 8.1 Incompletude atual dos dados em produção
+### 8.1 Cobertura atual dos dados em produção
 
-Em **22/11/2026**, foi observada a execução de ingestão `id = 1`, com status `PARCIAL`, iniciada em `2026-11-22 03:22:09.241064+00` e finalizada em `2026-11-22 04:07:20.313932+00`. A execução encontrou 26 arquivos, processou 23 e registrou falha em 3 arquivos. A evidência da execução está em [`historico_ingestoes_rows_22-11.csv`](evidencias/historico_ingestoes_rows_22-11.csv).
+A SSPDS/CE corrigiu os problemas anteriormente observados nos arquivos de `Salvamento_2022-a-2024.xlsx`, `Incendios_2022-a-2024.xlsx` e no recorte mensal de Armas de Fogo (solicitação: [`e-sic_arquivos_inconsistentes_solicitacao_22-11.pdf`](evidencias/e-sic_arquivos_inconsistentes_solicitacao_22-11.pdf)). Após a correção e a nova execução da ingestão, os dados correspondentes poderão ser carregados normalmente pelo pipeline.
 
-Os três arquivos com falha **não foram carregados na base em produção**. Portanto, a **cobertura em produção encontra-se incompleta** para os respectivos recortes temporais e temas até que os arquivos sejam corrigidos na fonte e processados com sucesso por uma nova execução.
+#### Recorte temporal da série histórica
 
-#### Arquivos não carregados
+Os dados da série histórica passaram por um recorte temporal na base de produção. A cobertura histórica não contém todos os anos publicados pela SSPDS/CE, pois o plano gratuito do Supabase possui limites de armazenamento.
 
-| Arquivo | URL publicada pela SSPDS/CE | Erro registrado |
-| :-- | :-- | :-- |
-| `Arma-de-Fogo_Outubro.xlsx` | <https://www.ce.gov.br/sspds/wp-content/uploads/sites/66/2026/01/Arma-de-Fogo_Outubro.xlsx> | `ValueError: Mês do nome (10) diverge do último mês dos dados (9).` |
-| `Salvamento_2022-a-2024.xlsx` | <https://www.ce.gov.br/sspds/wp-content/uploads/sites/66/2026/01/Salvamento_2022-a-2024.xlsx> | `AttributeError: 'NaTType' object has no attribute 'dropna'` |
-| `Incendios_2022-a-2024.xlsx` | <https://www.ce.gov.br/sspds/wp-content/uploads/sites/66/2026/01/Incendios_2022-a-2024.xlsx> | `AttributeError: 'NaTType' object has no attribute 'dropna'` |
+Por esse motivo, a variável `INTERVALO_MAXIMO_ANOS` foi adicionada à ingestão. Ela define a quantidade máxima, inclusiva, de anos históricos que serão armazenados. O recorte é aplicado somente às planilhas da série histórica e considera o maior ano presente nos dados.
 
-#### Causa técnica identificada
+Exemplo:
 
-Nos arquivos `Salvamento_2022-a-2024.xlsx` e `Incendios_2022-a-2024.xlsx`, os cabeçalhos estão divergentes/alterados em relação à padronização esperada pela ingestão e às demais planilhas da seção atual. Também foi identificada a ausência da coluna `AIS`. Como as colunas esperadas não são reconhecidas, a extração/conversão da data resulta em `NaTType`, em vez de uma série/objeto compatível com a chamada a `.dropna()`, o que dispara o `AttributeError` registrado.
+- `INTERVALO_MAXIMO_ANOS=6`
+- A planilha contém dados entre `2009` e `2025`
+- Serão normalizados e carregados somente os dados de `2020` a `2025`.
 
-Essas ocorrências caracterizam um problema operacional na ingestão e na qualidade/padronização dos arquivos publicados pela fonte. **Não indicam falha do modelo de banco de dados.**
+Na configuração atual do ambiente de produção:
 
-#### Tratativa junto à SSPDS/CE
+- `INTERVALO_MAXIMO_ANOS=6`
+- A série histórica é limitada aos seis anos mais recentes presentes em cada planilha.
 
-Foi aberta solicitação formal à SSPDS/CE, via e-SIC, para tratar das colunas divergentes/ausentes nos arquivos de Salvamento e Incêndios e da ausência de dados de Salvamento em outubro. A cópia da solicitação está disponível em [`e-sic_arquivos_inconsistentes_solicitacao_22-11.pdf`](evidencias/e-sic_arquivos_inconsistentes_solicitacao_22-11.pdf).
+O comportamento do recorte é definido da seguinte forma:
 
-Até a disponibilização de arquivos corrigidos e sua ingestão bem-sucedida, consultas à API podem não contemplar os registros correspondentes a esses recortes/temas. A cobertura deve ser considerada temporariamente incompleta; a falha e a pendência devem permanecer registradas até a regularização da fonte e a confirmação da carga em produção.
+- `INTERVALO_MAXIMO_ANOS` com valor inteiro positivo: mantém apenas os registros cujo ano seja maior ou igual ao maior ano da planilha menos o intervalo informado menos um.
+- `INTERVALO_MAXIMO_ANOS=0` ou `INTERVALO_MAXIMO_ANOS=None`: não aplica recorte e mantém todos os anos da planilha.
+- Sem valor ou com valor vazio: a variável é obrigatória e a configuração não é considerada válida.
 
+> [!NOTE]
+> Esse recorte representa uma decisão operacional de armazenamento no Supabase. Ele não altera os arquivos publicados pela SSPDS/CE nem impede o processamento das demais séries e categorias dentro do limite configurado.
+
+#### Cobertura efetiva
+
+No estado atual da produção:
+
+- a cobertura da série corrente continua seguindo os dados mensais publicados pela SSPDS/CE;
+- a cobertura da série histórica está limitada pelo `INTERVALO_MAXIMO_ANOS`;
+- registros históricos anteriores ao intervalo configurado não estão disponíveis na API;
+- ao aumentar o limite ou mudar para `0`/`None`, uma nova ingestão poderá carregar novamente o intervalo completo permitido pelos arquivos históricos.
 ---
 
 ## 9. Variáveis de ambiente do serviço

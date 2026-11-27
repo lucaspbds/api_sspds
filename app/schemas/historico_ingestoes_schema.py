@@ -1,7 +1,9 @@
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import BaseModel
+
+from app.schemas.consulta_schema import PaginationMeta
 
 
 class HistoricoIngestaoResponse(BaseModel):
@@ -14,3 +16,8 @@ class HistoricoIngestaoResponse(BaseModel):
     qtd_arquivos_falhas: int
     mensagem_erro: Optional[str] = None
     criado_em: datetime
+
+
+class HistoricoIngestaoPaginadoResponse(BaseModel):
+    items: List[HistoricoIngestaoResponse]
+    pagination: PaginationMeta

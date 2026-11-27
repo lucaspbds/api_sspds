@@ -1,6 +1,8 @@
-from typing import Optional
+from typing import List, Optional
+from pydantic import BaseModel
 
 from app.schemas.base_schema import CrimeBaseSchema
+from app.schemas.consulta_schema import PaginationMeta
 
 
 class PreconceitoResponse(CrimeBaseSchema):
@@ -19,3 +21,8 @@ class PreconceitoResponse(CrimeBaseSchema):
     vitima_idade: Optional[int] = None
     vitima_escolaridade: Optional[str] = None
     vitima_raca: Optional[str] = None
+
+
+class PreconceitoPaginadoResponse(BaseModel):
+    items: List[PreconceitoResponse]
+    pagination: PaginationMeta

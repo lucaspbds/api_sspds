@@ -1,8 +1,9 @@
-from typing import Any, Optional
+from typing import Any, List, Optional
 
-from pydantic import model_validator
+from pydantic import BaseModel, model_validator
 
 from app.schemas.base_schema import CrimeBaseSchema
+from app.schemas.consulta_schema import PaginationMeta
 
 _IDADE_NAO_INFORMADA = {
     "não informada", "nao informada", "nao informado",
@@ -37,3 +38,13 @@ class CvliResponse(CrimeComVitimaResponse):
     """Schema para Crimes Violentos Letais Intencionais (CVLI)."""
     natureza: Optional[str] = None
     meio_empregado: Optional[str] = None
+
+
+class CrimeComVitimaPaginadoResponse(BaseModel):
+    items: List[CrimeComVitimaResponse]
+    pagination: PaginationMeta
+
+
+class CvliPaginadoResponse(BaseModel):
+    items: List[CvliResponse]
+    pagination: PaginationMeta

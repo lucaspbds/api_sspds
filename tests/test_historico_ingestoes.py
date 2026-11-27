@@ -3,23 +3,30 @@ from fastapi.testclient import TestClient
 from datetime import datetime, timezone
 
 from app.main import app
-# Importamos o serviço para mockar a dependência do banco de dados
-from app.services.historico_ingestoes_service import HistoricoIngestoesService
 
 client = TestClient(app)
+
+# TESTES DE INTEGRAÇÃO (Dependem do banco de dados real / Supabase)
 
 
 def test_listar_historico_sem_filtros():
     response = client.get("/historico-ingestoes/")
     assert response.status_code == 200
-    assert isinstance(response.json(), list)
+    
+    dados = response.json()
+    # A resposta agora é um objeto paginado, não uma lista solta
+    assert isinstance(dados, dict)
+    assert "items" in dados
+    assert "pagination" in dados
+    assert isinstance(dados["items"], list)
 
 
 def test_listar_historico_com_status_valido():
     response = client.get("/historico-ingestoes/?status=SUCESSO")
 
     if response.status_code == 200:
-        for item in response.json():
+        dados = response.json()
+        for item in dados["items"]:
             assert item["status"] == "SUCESSO"
     elif response.status_code == 404:
         assert (
@@ -45,12 +52,14 @@ def test_listar_historico_com_data_invalida():
     response = client.get("/historico-ingestoes/?data=data-invalida")
     assert response.status_code == 422
 
+# TESTES UNITÁRIOS COM MONKEYPATCH (Não dependem do banco de dados)
+
 def test_listar_historico_sem_banco_retorna_404(monkeypatch):
     """Testa retorno 404 quando o serviço não encontra registros (banco vazio)."""
-    # Mocka a função do repository para retornar lista vazia
+    # CORREÇÃO: O mock deve ser na função correta que o service chama
     monkeypatch.setattr(
-        "app.services.historico_ingestoes_service.consultar_registros",
-        lambda **kwargs: []
+        "app.services.historico_ingestoes_service.consultar_registros_paginados",
+        lambda **kwargs: {"items": [], "pagination": {"limit": 10, "next_cursor": None, "has_next": False}}
     )
 
     response = client.get("/historico-ingestoes/")
@@ -62,45 +71,45 @@ def test_listar_historico_sem_banco_retorna_404(monkeypatch):
 
 
 def test_listar_historico_mockado_valida_schema(monkeypatch):
-    """Testa a serialização do schema HistoricoIngestaoResponse e repasse de filtros."""
+    """Testa a serialização do schema Paginado e repasse de filtros."""
     capturado = {}
 
-    def fake_consultar_registros(**kwargs):
-        # Captura os argumentos repassados pelo serviço para o repository
+    def fake_consultar_registros_paginados(**kwargs):
         capturado.update(kwargs)
-        
-        # Retorna um registro fictício simulando a resposta do banco
-        return [
-            {
-                "id": 1,
-                "data_inicio": datetime.now(timezone.utc).isoformat(),
-                "data_fim": None,
-                "status": "SUCESSO",
-                "qtd_arquivos_encontrados": 10,
-                "qtd_arquivos_processados": 10,
-                "qtd_arquivos_falhas": 0,
-                "mensagem_erro": None,
-                "criado_em": datetime.now(timezone.utc).isoformat(),
-            }
-        ]
+        return {
+            "items": [
+                {
+                    "id": 1,
+                    "data_inicio": "2026-11-21T10:00:00Z",
+                    "data_fim": None,
+                    "status": "SUCESSO",
+                    "qtd_arquivos_encontrados": 10,
+                    "qtd_arquivos_processados": 10,
+                    "qtd_arquivos_falhas": 0,
+                    "mensagem_erro": None,
+                    "criado_em": "2026-11-21T10:00:00Z",
+                }
+            ],
+            "pagination": {"limit": 5, "next_cursor": 1, "has_next": False},
+        }
 
-    # Mocka a função com a nossa versão falsa
     monkeypatch.setattr(
-        "app.services.historico_ingestoes_service.consultar_registros",
-        fake_consultar_registros
+        "app.services.historico_ingestoes_service.consultar_registros_paginados",
+        fake_consultar_registros_paginados
     )
 
-    # Faz a requisição enviando filtros
     response = client.get("/historico-ingestoes/?status=SUCESSO&limit=5")
 
     assert response.status_code == 200
     
-    # 1. Valida se o schema serializou os dados corretamente
     dados = response.json()
-    assert len(dados) == 1
-    assert dados[0]["id"] == 1
-    assert dados[0]["status"] == "SUCESSO"
-    assert dados[0]["qtd_arquivos_processados"] == 10
+    # 1. Valida a estrutura de paginação e serialização
+    assert "items" in dados
+    assert "pagination" in dados
+    assert len(dados["items"]) == 1
+    assert dados["items"][0]["id"] == 1
+    assert dados["items"][0]["status"] == "SUCESSO"
+    assert dados["pagination"]["limit"] == 5
 
     # 2. Valida se o serviço repassou os filtros corretamente para o repository
     assert capturado["tabela"] == "historico_ingestoes"

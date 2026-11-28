@@ -1,7 +1,7 @@
 from datetime import date, datetime, time, timezone
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Optional, Union
 
-from database.repository import consultar_registros
+from database.repository import LIMITE_PADRAO_PAGINACAO, consultar_registros_paginados
 
 TABELA_HISTORICO_INGESTOES = "historico_ingestoes"
 COLUNA_DATA_CRIADO_EM = "criado_em"
@@ -33,8 +33,9 @@ class HistoricoIngestoesService:
     def listar_historico(
         status: Optional[str] = None,
         data: Optional[Union[date, str]] = None,
+        cursor: Optional[int] = None,
         limit: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
+    ) -> Dict[str, Any]:
         filtros: Dict[str, Any] = {}
 
         # ---- validação de status ----
@@ -47,9 +48,12 @@ class HistoricoIngestoesService:
                 )
             filtros["status"] = status_normalizado
 
-        # ---- validação de limit ----
-        if limit is not None and limit <= 0:
+        # ---- validação de limit e cursor ----
+        limite_efetivo = LIMITE_PADRAO_PAGINACAO if limit is None else limit
+        if limite_efetivo <= 0:
             raise ValueError("O parâmetro 'limit' deve ser um inteiro positivo.")
+        if cursor is not None and cursor <= 0:
+            raise ValueError("O parâmetro 'cursor' deve ser um inteiro positivo.")
 
         # ---- normalização da data (aceita date ou string BR/ISO) ----
         data_normalizada: Optional[date]
@@ -68,10 +72,12 @@ class HistoricoIngestoesService:
                 data_normalizada, time.max, tzinfo=timezone.utc
             ).isoformat()
 
-        return consultar_registros(
+        return consultar_registros_paginados(
             tabela=TABELA_HISTORICO_INGESTOES,
             filtros=filtros or None,
-            limite=limit,
+            limite=limite_efetivo,
+            cursor=cursor,
+            coluna_cursor="id",
             coluna_data=COLUNA_DATA_CRIADO_EM if data_normalizada is not None else None,
             data_inicio=data_inicio,
             data_fim=data_fim,

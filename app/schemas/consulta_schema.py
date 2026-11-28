@@ -1,6 +1,13 @@
 from datetime import date, time, datetime
-from typing import Optional
+from typing import List, Optional
 from pydantic import BaseModel, ConfigDict
+
+
+class PaginationMeta(BaseModel):
+    limit: int
+    next_cursor: Optional[int] = None
+    has_next: bool
+
 
 class CrimeGeralResponse(BaseModel):
     """Schema unificado para resposta das rotas de consulta de crimes."""
@@ -26,5 +33,10 @@ class CrimeGeralResponse(BaseModel):
     tipo_entorpecente: Optional[str] = None
     peso_entorpecente_kg: Optional[float] = None
     criado_em: Optional[datetime] = None
-    
+
     model_config = ConfigDict(from_attributes=True)
+
+
+class CrimeGeralPaginadoResponse(BaseModel):
+    items: List[CrimeGeralResponse]
+    pagination: PaginationMeta

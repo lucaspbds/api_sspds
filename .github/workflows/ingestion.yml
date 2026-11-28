@@ -48,4 +48,5 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           url_sspds: "https://www.ce.gov.br/sspds/estatisticas/"
           url_sspds_historico: "https://www.ce.gov.br/sspds/estatisticas/dados-detalhados/"
+          INTERVALO_MAXIMO_ANOS: 6
         run: python -m ingestion.pipeline

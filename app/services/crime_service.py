@@ -1,6 +1,6 @@
 import logging
 from datetime import date
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, Optional, Sequence
 
 from database.exceptions import (
     ErroConexaoBanco,
@@ -9,7 +9,7 @@ from database.exceptions import (
 from database.exceptions import (
     VariavelAmbienteNaoEncontrada as VariavelAmbienteNaoEncontradaBanco,
 )
-from database.repository import consultar_registros, criar_cliente_supabase
+from database.repository import LIMITE_PADRAO_PAGINACAO, consultar_registros_paginados
 
 logger = logging.getLogger("app.services.crime_service")
 
@@ -53,84 +53,48 @@ def _normalizar_tipo(valor: Optional[str]) -> Optional[str]:
     return texto or None
 
 
-def _consultar_varios_tipos(
-    filtros: Dict[str, Any],
-    tipos: Sequence[str],
-    data_inicio: Optional[date],
-    data_fim: Optional[date],
-    limite: Optional[int],
-) -> List[Dict[str, Any]]:
-    """
-    Consulta com filtro `IN` em `tipo_crime`. O `consultar_registros` do repository só
-    aceita igualdade, então a query é montada diretamente com o cliente Supabase.
-    """
-    cliente = criar_cliente_supabase()
-    query = cliente.table(TABELA_OCORRENCIAS).select("*")
-
-    for coluna, valor in filtros.items():
-        query = query.eq(coluna, valor)
-    query = query.in_("tipo_crime", list(tipos))
-    if data_inicio:
-        query = query.gte(COLUNA_DATA, data_inicio.isoformat())
-    if data_fim:
-        query = query.lte(COLUNA_DATA, data_fim.isoformat())
-    if limite is not None:
-        query = query.limit(limite)
-
-    return query.execute().data or []
-
-
 def _consultar(
     *,
     filtros: Optional[Dict[str, Any]] = None,
     tipos: Optional[Sequence[str]] = None,
     data_inicio: Optional[date] = None,
     data_fim: Optional[date] = None,
+    cursor: Optional[int] = None,
     limite: Optional[int] = None,
-) -> List[Dict[str, Any]]:
+) -> Dict[str, Any]:
     """
-    Executa a consulta em `ocorrencias_crimes`.
-
-    Com zero ou um tipo, usa `database.repository.consultar_registros` (igualdade +
-    período + limite). Com vários tipos, usa um filtro `IN` (`_consultar_varios_tipos`).
-
-    Args:
-        filtros: Pares {coluna: valor} comparados por igualdade (já normalizados).
-        tipos: Um ou mais valores exatos de `tipo_crime`.
-        data_inicio: Limite inferior (inclusive) de `data_fato`.
-        data_fim: Limite superior (inclusive) de `data_fato`.
-        limite: Número máximo de registros (deve ser maior que zero).
-
-    Returns:
-        Lista de registros encontrados.
-
-    Raises:
-        ValueError: Se `limite` for <= 0 ou `data_inicio` for posterior a `data_fim`.
-        VariavelAmbienteNaoEncontrada / ErroConexaoBanco: Falha ao conectar ao banco.
-        ErroOperacaoBanco: Falha ao executar a consulta no Supabase.
+    Executa a consulta paginada por cursor em `vw_ocorrencias_publicadas`
+    via `database.repository.consultar_registros_paginados`.
     """
-    if limite is not None and limite <= 0:
+    limite_efetivo = LIMITE_PADRAO_PAGINACAO if limite is None else limite
+    if limite_efetivo <= 0:
         raise ValueError("O limite da consulta deve ser maior que zero.")
+    if cursor is not None and cursor <= 0:
+        raise ValueError("O parâmetro 'cursor' deve ser um inteiro positivo.")
     if data_inicio and data_fim and data_inicio > data_fim:
         raise ValueError("data_inicio não pode ser posterior a data_fim.")
 
-    filtros = dict(filtros or {})
-    tipos = list(tipos or [])
-    if len(tipos) == 1:
-        filtros["tipo_crime"] = tipos[0]
+    filtros_limpos = dict(filtros or {})
+    tipos_lista = list(tipos or [])
+    filtros_in: Optional[Dict[str, Sequence[Any]]] = None
+
+    if len(tipos_lista) == 1:
+        filtros_limpos["tipo_crime"] = tipos_lista[0]
+    elif len(tipos_lista) > 1:
+        filtros_in = {"tipo_crime": tipos_lista}
 
     try:
-        if len(tipos) > 1:
-            dados = _consultar_varios_tipos(filtros, tipos, data_inicio, data_fim, limite)
-        else:
-            dados = consultar_registros(
-                tabela=TABELA_OCORRENCIAS,
-                filtros=filtros or None,
-                limite=limite,
-                coluna_data=COLUNA_DATA if (data_inicio or data_fim) else None,
-                data_inicio=data_inicio,
-                data_fim=data_fim,
-            )
+        resultado = consultar_registros_paginados(
+            tabela=TABELA_OCORRENCIAS,
+            filtros=filtros_limpos or None,
+            filtros_in=filtros_in,
+            limite=limite_efetivo,
+            cursor=cursor,
+            coluna_cursor="id",
+            coluna_data=COLUNA_DATA if (data_inicio or data_fim) else None,
+            data_inicio=data_inicio,
+            data_fim=data_fim,
+        )
     except (ErroOperacaoBanco, ErroConexaoBanco, VariavelAmbienteNaoEncontradaBanco):
         # Já são exceções de domínio com handler próprio (500/503); não reembrulhar.
         raise
@@ -139,11 +103,48 @@ def _consultar(
         raise ErroOperacaoBanco("consulta", TABELA_OCORRENCIAS) from e
 
     logger.info(
-        "Consulta concluída tabela=%s registros_retornados=%s",
+        "Consulta concluída tabela=%s registros_retornados=%s has_next=%s next_cursor=%s",
         TABELA_OCORRENCIAS,
-        len(dados),
+        len(resultado["items"]),
+        resultado["pagination"]["has_next"],
+        resultado["pagination"]["next_cursor"],
     )
-    return dados
+    return resultado
+
+
+def _montar_filtros_especificos(
+    *,
+    municipio: Optional[str] = None,
+    ais: Optional[str] = None,
+    dia_semana: Optional[str] = None,
+    natureza: Optional[str] = None,
+    local_fato: Optional[str] = None,
+    meio_empregado: Optional[str] = None,
+    vitima_genero: Optional[str] = None,
+    vitima_orientacao_sexual: Optional[str] = None,
+    vitima_raca: Optional[str] = None,
+    vitima_idade: Optional[int] = None,
+    vitima_escolaridade: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Monta o dicionário de filtros normalizados para rotas específicas."""
+    candidatos_texto: Dict[str, Optional[str]] = {
+        "municipio": _normalizar_texto(municipio),
+        "ais": _normalizar_texto(ais),
+        "dia_semana": _normalizar_texto(dia_semana),
+        "natureza": _normalizar_texto(natureza),
+        "local_fato": _normalizar_texto(local_fato),
+        "meio_empregado": _normalizar_texto(meio_empregado),
+        "vitima_genero": _normalizar_texto(vitima_genero),
+        "vitima_orientacao_sexual": _normalizar_texto(vitima_orientacao_sexual),
+        "vitima_raca": _normalizar_texto(vitima_raca),
+        "vitima_escolaridade": _normalizar_texto(vitima_escolaridade),
+    }
+    filtros: Dict[str, Any] = {
+        coluna: valor for coluna, valor in candidatos_texto.items() if valor
+    }
+    if vitima_idade is not None:
+        filtros["vitima_idade"] = vitima_idade
+    return filtros
 
 
 class CrimeService:
@@ -161,10 +162,11 @@ class CrimeService:
         tipo_entorpecente: Optional[str] = None,
         data_inicio: Optional[date] = None,
         data_fim: Optional[date] = None,
+        cursor: Optional[int] = None,
         limit: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
+    ) -> Dict[str, Any]:
         """
-        Consulta geral com filtros dinâmicos (todos opcionais e combináveis).
+        Consulta geral com filtros dinâmicos (todos opcionais e combináveis) e paginação por cursor.
 
         - `tipo_crime`: valor exato da coluna (maiúsculas e espaços extras normalizados).
         - Demais filtros de texto: igualdade exata, sem diferenciar maiúsculas/minúsculas
@@ -188,32 +190,108 @@ class CrimeService:
             filtros=filtros,
             data_inicio=data_inicio,
             data_fim=data_fim,
+            cursor=cursor,
             limite=limit,
         )
 
     @staticmethod
-    def listar_por_tipo(tipo: str, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+    def listar_por_tipo(
+        tipo: str,
+        limit: Optional[int] = None,
+        cursor: Optional[int] = None,
+        municipio: Optional[str] = None,
+        ais: Optional[str] = None,
+        dia_semana: Optional[str] = None,
+        natureza: Optional[str] = None,
+        local_fato: Optional[str] = None,
+        meio_empregado: Optional[str] = None,
+        vitima_genero: Optional[str] = None,
+        vitima_orientacao_sexual: Optional[str] = None,
+        vitima_raca: Optional[str] = None,
+        vitima_idade: Optional[int] = None,
+        vitima_escolaridade: Optional[str] = None,
+        data_inicio: Optional[date] = None,
+        data_fim: Optional[date] = None,
+    ) -> Dict[str, Any]:
         """
-        Consulta específica por **um** tipo de crime.
+        Consulta específica por **um** tipo de crime com paginação por cursor.
 
         O valor de `tipo` deve ser exatamente uma das strings presentes na coluna
         `tipo_crime` (veja as constantes `TIPO_*` deste módulo).
         """
-        return _consultar(tipos=[tipo], limite=limit)
+        filtros = _montar_filtros_especificos(
+            municipio=municipio,
+            ais=ais,
+            dia_semana=dia_semana,
+            natureza=natureza,
+            local_fato=local_fato,
+            meio_empregado=meio_empregado,
+            vitima_genero=vitima_genero,
+            vitima_orientacao_sexual=vitima_orientacao_sexual,
+            vitima_raca=vitima_raca,
+            vitima_idade=vitima_idade,
+            vitima_escolaridade=vitima_escolaridade,
+        )
+        return _consultar(
+            filtros=filtros,
+            tipos=[tipo],
+            data_inicio=data_inicio,
+            data_fim=data_fim,
+            cursor=cursor,
+            limite=limit,
+        )
 
     @staticmethod
     def listar_por_tipos(
-        tipos: Sequence[str], limit: Optional[int] = None
-    ) -> List[Dict[str, Any]]:
+        tipos: Sequence[str],
+        limit: Optional[int] = None,
+        cursor: Optional[int] = None,
+        municipio: Optional[str] = None,
+        ais: Optional[str] = None,
+        dia_semana: Optional[str] = None,
+        natureza: Optional[str] = None,
+        local_fato: Optional[str] = None,
+        meio_empregado: Optional[str] = None,
+        vitima_genero: Optional[str] = None,
+        vitima_orientacao_sexual: Optional[str] = None,
+        vitima_raca: Optional[str] = None,
+        vitima_idade: Optional[int] = None,
+        vitima_escolaridade: Optional[str] = None,
+        data_inicio: Optional[date] = None,
+        data_fim: Optional[date] = None,
+    ) -> Dict[str, Any]:
         """
         Consulta específica por **vários** tipos de crime (filtro `IN`), como
-        `TIPOS_OPERACIONAIS` e `TIPOS_COM_VITIMA`.
+        `TIPOS_OPERACIONAIS` e `TIPOS_COM_VITIMA`, com paginação por cursor.
         """
-        return _consultar(tipos=tipos, limite=limit)
+        filtros = _montar_filtros_especificos(
+            municipio=municipio,
+            ais=ais,
+            dia_semana=dia_semana,
+            natureza=natureza,
+            local_fato=local_fato,
+            meio_empregado=meio_empregado,
+            vitima_genero=vitima_genero,
+            vitima_orientacao_sexual=vitima_orientacao_sexual,
+            vitima_raca=vitima_raca,
+            vitima_idade=vitima_idade,
+            vitima_escolaridade=vitima_escolaridade,
+        )
+        return _consultar(
+            filtros=filtros,
+            tipos=tipos,
+            data_inicio=data_inicio,
+            data_fim=data_fim,
+            cursor=cursor,
+            limite=limit,
+        )
 
     @staticmethod
-    def listar_ocorrencias(limit: Optional[int] = None) -> List[Dict[str, Any]]:
+    def listar_ocorrencias(
+        limit: Optional[int] = None,
+        cursor: Optional[int] = None,
+    ) -> Dict[str, Any]:
         """
         Consulta simples de ocorrências, sem filtros (mantida para compatibilidade).
         """
-        return _consultar(limite=limit)
+        return _consultar(limite=limit, cursor=cursor)

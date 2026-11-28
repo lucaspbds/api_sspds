@@ -37,6 +37,7 @@ from .versionamento import (
     identificar_serie, periodo_historico, extrair_ultimo_mes, classificar_versao,
     ids_orfaos_antigos, ids_reconciliacao,
 )
+from .config import get_intervalo_maximo_anos
 
 configure_logging()
 logger = logging.getLogger("ingestion.pipeline")
@@ -133,7 +134,20 @@ def desfazer_carga(arquivo_id: int, cliente: Any) -> None:
             "incompleto (periodo_dados nulo) e será reprocessado.",
             arquivo_id,
         )
+def recorte_temporal(df: pd.DataFrame) -> pd.DataFrame:
+    """Recorta o DataFrame para o intervalo máximo de anos definido em .env.
 
+    Se INTERVALO_MAXIMO_ANOS for None, não aplica recorte.
+    """
+    intervalo_maximo_anos = get_intervalo_maximo_anos()
+    if intervalo_maximo_anos is None:
+        return df
+
+    df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+    ano_max = df["Data"].dt.year.max()
+    ano_minimo = ano_max - (intervalo_maximo_anos - 1)
+    df_recortado = df[df["Data"].dt.year >= ano_minimo]
+    return df_recortado
 
 def carregar_arquivo(
     url: str, classificado: dict[str, Any], data_coleta: str, id_ingestao: int, cliente: Any
@@ -169,6 +183,8 @@ def carregar_arquivo(
         df = classificado.get("_dataframe")
         if df is None:
             df = ler_planilha(classificado["path"])
+        if classificado.get("serie") == "historica":
+            df = recorte_temporal(df)
         dados_normalizados = normalizer(
             df=df, arquivo_id=arquivo_id, tipo_ocorrencia=classificado["tipo_ocorrencia"]
         )

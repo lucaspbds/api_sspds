@@ -1,9 +1,10 @@
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 from datetime import date, time
 from typing import Optional
 
 class CrimeBaseSchema(BaseModel):
     """Atributos que todo crime tem e servirá de herança para os outros tipos de crime"""
+    id: int
     tipo_crime: Optional[str] = None
     ais: Optional[str] = None
     municipio: str

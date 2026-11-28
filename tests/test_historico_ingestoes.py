@@ -6,13 +6,38 @@ from app.main import app
 
 client = TestClient(app)
 
-# TESTES DE INTEGRAÇÃO (Dependem do banco de dados real / Supabase)
+
+def _mock_item_historico(**overrides):
+    base = {
+        "id": 1,
+        "data_inicio": "2026-11-21T10:00:00Z",
+        "data_fim": None,
+        "status": "SUCESSO",
+        "qtd_arquivos_encontrados": 10,
+        "qtd_arquivos_processados": 10,
+        "qtd_arquivos_falhas": 0,
+        "mensagem_erro": None,
+        "criado_em": "2026-11-21T10:00:00Z",
+    }
+    base.update(overrides)
+    return base
 
 
-def test_listar_historico_sem_filtros():
+# TESTES MOCKADOS (Não dependem do banco de dados real / Supabase)
+
+
+def test_listar_historico_sem_filtros(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.historico_ingestoes_service.consultar_registros_paginados",
+        lambda **kwargs: {
+            "items": [_mock_item_historico()],
+            "pagination": {"limit": 100, "next_cursor": None, "has_next": False},
+        },
+    )
+
     response = client.get("/historico-ingestoes/")
     assert response.status_code == 200
-    
+
     dados = response.json()
     # A resposta agora é um objeto paginado, não uma lista solta
     assert isinstance(dados, dict)
@@ -21,7 +46,15 @@ def test_listar_historico_sem_filtros():
     assert isinstance(dados["items"], list)
 
 
-def test_listar_historico_com_status_valido():
+def test_listar_historico_com_status_valido(monkeypatch):
+    monkeypatch.setattr(
+        "app.services.historico_ingestoes_service.consultar_registros_paginados",
+        lambda **kwargs: {
+            "items": [_mock_item_historico(status="SUCESSO")],
+            "pagination": {"limit": 100, "next_cursor": None, "has_next": False},
+        },
+    )
+
     response = client.get("/historico-ingestoes/?status=SUCESSO")
 
     if response.status_code == 200:
@@ -59,7 +92,10 @@ def test_listar_historico_sem_banco_retorna_404(monkeypatch):
     # CORREÇÃO: O mock deve ser na função correta que o service chama
     monkeypatch.setattr(
         "app.services.historico_ingestoes_service.consultar_registros_paginados",
-        lambda **kwargs: {"items": [], "pagination": {"limit": 10, "next_cursor": None, "has_next": False}}
+        lambda **kwargs: {
+            "items": [],
+            "pagination": {"limit": 10, "next_cursor": None, "has_next": False},
+        },
     )
 
     response = client.get("/historico-ingestoes/")
@@ -77,31 +113,19 @@ def test_listar_historico_mockado_valida_schema(monkeypatch):
     def fake_consultar_registros_paginados(**kwargs):
         capturado.update(kwargs)
         return {
-            "items": [
-                {
-                    "id": 1,
-                    "data_inicio": "2026-11-21T10:00:00Z",
-                    "data_fim": None,
-                    "status": "SUCESSO",
-                    "qtd_arquivos_encontrados": 10,
-                    "qtd_arquivos_processados": 10,
-                    "qtd_arquivos_falhas": 0,
-                    "mensagem_erro": None,
-                    "criado_em": "2026-11-21T10:00:00Z",
-                }
-            ],
+            "items": [_mock_item_historico()],
             "pagination": {"limit": 5, "next_cursor": 1, "has_next": False},
         }
 
     monkeypatch.setattr(
         "app.services.historico_ingestoes_service.consultar_registros_paginados",
-        fake_consultar_registros_paginados
+        fake_consultar_registros_paginados,
     )
 
     response = client.get("/historico-ingestoes/?status=SUCESSO&limit=5")
 
     assert response.status_code == 200
-    
+
     dados = response.json()
     # 1. Valida a estrutura de paginação e serialização
     assert "items" in dados

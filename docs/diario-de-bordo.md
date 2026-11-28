@@ -253,3 +253,27 @@ David — implementar o downloader e normalizar os dados para o modelo do banco.
 - `docs/evidencias/historico_ingestoes_rows_22-11.csv` — registro da primeira carga em produção (22/11) evidenciando 23 arquivos processados e 3 falhas.
 
 **Próxima semana:** Nikelly — implementar middleware de registro de acessos em `api_request_logs` (excluindo bots e requisições da equipe via token) e disponibilizar a URL pública da API; Abimael — tratar a otimização/recorte de armazenamento no Supabase Free Tier e divulgar a API + formulário de avaliação no LinkedIn; David — acompanhar o retorno do e-SIC sobre as 3 planilhas fora do padrão e monitorar a ingestão agendada; TODOS — coletar feedbacks externos via formulário e incorporar melhorias para o Marco 3 (27/11).
+
+---
+
+Semana de 27/11
+
+Quem trabalhou e quanto: David Lucas Pereira Braga dos Santos — 5h30; Nikelly Santiago da Silva — 5h40; Carlos Abimael Oliveira do Nascimento — 1h30
+
+O que foi feito:
+
+* Adição da função `consultar_registros_paginados` em `database/repository.py` utilizando paginação por Keyset/Cursor em ordem decrescente (`LIMITE_PADRAO_PAGINACAO = 100` e `LIMITE_MAXIMO_PAGINACAO = 500`), com suporte a filtros de inclusão (`.in_()`), igualdade e intervalo de datas, além de padronização do payload de retorno (`items` e `pagination`), preservando `consultar_registros` para manter compatibilidade com os módulos existentes; inclusão de testes unitários e de integração (`@pytest.mark.database`) em `tests/test_database.py` e atualização da documentação em `docs/database.md`; registro da avaliação externa de usuários em `docs/evidencias/avaliacao-uso-api_26-11.csv` e atualização/padronização do índice `docs/evidencias.csv` (Abimael).
+* Implementação do parâmetro configurável `INTERVALO_MAXIMO_ANOS` (padrão de 6 anos, podendo ser desativado com `0` ou `None`) para recorte temporal exclusivo das planilhas da série histórica a partir do ano mais recente, atualização do workflow de ingestão e do arquivo `.env.example`, criação de testes unitários para cenários de limite, janela temporal e descarte de datas inválidas, revisão da documentação da API, registro da correção dos arquivos da SSPDS/CE para novas ingestões, análise de Pull Requests e elaboração do diário de bordo e do Marco 3 (David).
+* Implementação da paginação por cursor (`id DESC`) nos serviços e rotas da API usando `consultar_registros_paginados`, padronização do envelope de resposta paginada (`items` e `pagination` com `limit`, `next_cursor` e `has_next`) e dos limites de paginação (`LIMITE_PADRAO_PAGINACAO` e `LIMITE_MAXIMO_PAGINACAO`), incorporação das atualizações de `main(teste)` (repositório, ingestão, documentação e testes) e alinhamento de routers, schemas, documentação (`docs/api.md`) e suítes de testes (Nikelly).
+
+Obstáculo:
+
+1. A inconsistência nos arquivos de origem da SSPDS/CE (registrada em `docs/evidencias/historico_ingestoes_rows_22-11.csv`) levou cerca de 5 dias para ser solucionada na fonte entre os dias 26/11 e 27/11, período após o qual os três arquivos afetados foram processados e armazenados com sucesso no banco de dados (conforme `docs/evidencias/historico_ingestoes_rows_27-11.csv`).
+2. A limitação de armazenamento do plano gratuito do Supabase levou cerca de 5 dias desde a identificação até a resolução definitiva com a implementação do recorte temporal máximo de 6 anos nas séries históricas.
+3. O registro de logs de quem acessa a API não pôde ser implementado por falta de tempo hábil para planejamento e desenvolvimento.
+
+Contato com o público: Aplicação de formulário de avaliação externa via Google Forms com dois usuários da API (Gabriel Braga em 24/11 e Pedro em 26/11).
+
+Evidência coletada: `docs/evidencias/avaliacao-uso-api_26-11.csv` (avaliações qualitativas do público externo sobre o uso da API) e `docs/evidencias/historico_ingestoes_rows_27-11.csv` (comprovação da ingestão bem-sucedida dos arquivos anteriormente inconsistentes).
+
+Próxima semana: Todos — organizar o material de apresentação do projeto para o professor orientador e demais colegas, e convidar um usuário externo que utilizou a API para relatar sua experiência.

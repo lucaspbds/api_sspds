@@ -6,6 +6,7 @@ from datetime import date, time
 import pandas as pd
 from pathlib import Path
 
+import ingestion.config as modulo_config
 import ingestion.pipeline as modulo_pipeline
 import ingestion.validator as modulo_validator
 from ingestion.pipeline import ResumoIngestao
@@ -569,6 +570,39 @@ def test_remover_arquivo_temporario_apaga_o_arquivo(tmp_path):
     assert not arquivo.exists()
 
 #PIPELINE
+def test_recorte_temporal_sem_limite(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(modulo_pipeline,"get_intervalo_maximo_anos", lambda: None)
+
+    df = pd.DataFrame(
+        {
+            "Data": ["2020-01-10", "2023-05-20", "2026-11-01"],
+            "Valor": [1, 2, 3]
+        }
+    )
+
+    resultado = modulo_pipeline.recorte_temporal(df)
+
+    assert len(resultado) == 3
+    assert resultado["Valor"].tolist() == [1, 2, 3]
+
+
+def test_recorte_temporal_aplica_janela_de_anos(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Com intervalo = 3 e ano_max = 2026 -> ano_minimo = 2026 - (3 - 1) = 2024
+    monkeypatch.setattr(modulo_pipeline, "get_intervalo_maximo_anos", lambda: 3)
+
+    df = pd.DataFrame(
+        {
+            "Data": ["2022-03-15", "2024-01-01", "2025-07-10", "2026-12-31"],
+            "Id": [10, 20, 30, 40],
+        }
+    )
+
+    resultado = modulo_pipeline.recorte_temporal(df)
+
+    assert resultado["Id"].tolist() == [20, 30, 40]
+    assert resultado["Data"].dt.year.min() == 2024
+    assert resultado["Data"].dt.year.max() == 2026
+
 def test_arquivo_novo_e_carregado_e_concluido(ambiente):
     URL_CVLI = "https://dados.test/CVLI_2024.xlsx"
     STATUS_INGESTAO_SUCESSO = "SUCESSO"
@@ -650,6 +684,20 @@ def test_resumo_limita_a_quantidade_de_erros_na_mensagem():
 # ---------------------------------------------------------
 
 #PIPELINE
+def test_recorte_temporal_ignora_datas_invalidas(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(modulo_pipeline, "get_intervalo_maximo_anos", lambda: 2)
+
+    df = pd.DataFrame(
+        {
+            "Data": ["data-invalida", "2025-02-01", "2026-06-01"],
+            "Id": [1, 2, 3],
+        }
+    )
+
+    with pytest.warns(UserWarning, match="Could not infer format"):
+        resultado = modulo_pipeline.recorte_temporal(df)
+        assert resultado["Id"].tolist() == [2, 3]
+
 def test_arquivo_ja_ingerido_e_ignorado_sem_tocar_no_banco(ambiente):
     URL_CVLI = "https://dados.test/CVLI_2024.xlsx"
     STATUS_INGESTAO_SUCESSO = "SUCESSO"

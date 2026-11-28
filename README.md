@@ -96,7 +96,7 @@ flowchart LR
 > A API lê **diretamente do Supabase** (`SUPABASE_URL` e `SUPABASE_KEY` no `.env`). Se não houver registros para a consulta, a rota responde `404`.
 
 > [!WARNING]
-> **A cobertura dos dados em produção está temporariamente incompleta.** Na execução de ingestão observada em 22/11/2026, 3 dos 26 arquivos encontrados falharam e não foram carregados. Os recortes/temas correspondentes podem, portanto, não aparecer nas consultas da API. O problema está relacionado à padronização e à qualidade dos arquivos publicados pela SSPDS/CE, e está documentado em [`docs/ingestion.md`](docs/ingestion.md#81-incompletude-atual-dos-dados-em-produção).
+> **A cobertura histórica dos dados em produção foi reduzida devido ao limite de armazenamento do plano gratuito do Supabase.** Como o volume de registros de ocorrências criminais era elevado, foi necessário aplicar um recorte temporal, mantendo apenas os dados dentro da janela de anos definida pela variável `INTERVALO_MAXIMO_ANOS`. Portanto, ocorrências anteriores a esse período não estão disponíveis na API. Para mais detalhes, consulte a seção [8.1 Incompletude atual dos dados em produção](docs/ingestion.md#81-cobertura-atual-dos-dados-em-produção).
 
 ---
 

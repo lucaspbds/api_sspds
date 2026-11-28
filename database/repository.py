@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Sequence, Union
 import httpx
 from supabase import Client, ClientOptions, create_client
 
@@ -16,6 +16,9 @@ logger = logging.getLogger("database.repository")
 # Silencia os logs de requisição (INFO) do httpx e httpcore
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
+
+LIMITE_PADRAO_PAGINACAO = 100
+LIMITE_MAXIMO_PAGINACAO = 500
 
 
 def criar_cliente_supabase() -> Client:
@@ -150,6 +153,167 @@ def consultar_registros(
             e,
         )
         raise ErroOperacaoBanco("consulta", tabela, detalhe=str(e)) from e
+
+
+def consultar_registros_paginados(
+    tabela: str,
+    filtros: Optional[Dict[str, Any]] = None,
+    filtros_in: Optional[Dict[str, Sequence[Any]]] = None,
+    limite: int = LIMITE_PADRAO_PAGINACAO,
+    cursor: Optional[int] = None,
+    coluna_cursor: str = "id",
+    coluna_data: Optional[str] = None,
+    data_inicio: Optional[Any] = None,
+    data_fim: Optional[Any] = None,
+    colunas: str = "*",
+    cliente: Optional[Client] = None,
+) -> Dict[str, Any]:
+    """
+    Realiza leitura paginada (SELECT) usando Keyset / Cursor Pagination em ordem
+    decrescente (`ORDER BY <coluna_cursor> DESC`, mais recentes primeiro).
+
+    Utiliza a técnica `limite + 1` para determinar `has_next` sem executar uma
+    consulta adicional de contagem (`COUNT`), mantendo a paginação segura dentro
+    do teto padrão do PostgREST/Supabase.
+
+    Args:
+        tabela (str): Nome da tabela ou view a ser consultada no banco de dados.
+        filtros (Optional[Dict[str, Any]]): Pares {coluna: valor} para filtrar por
+            igualdade (`WHERE coluna = valor`).
+        filtros_in (Optional[Dict[str, Sequence[Any]]]): Pares {coluna: sequencia}
+            para filtrar por inclusão (`WHERE coluna IN (...)`).
+        limite (int): Quantidade máxima de registros por página (padrão 100,
+            máximo 500).
+        cursor (Optional[int]): Último identificador recebido na página anterior;
+            quando informado, aplica `WHERE <coluna_cursor> < cursor`.
+        coluna_cursor (str): Nome da coluna inteira usada na ordenação e no cursor
+            (padrão `'id'`).
+        coluna_data (Optional[str]): Nome da coluna temporal usada no filtro por
+            intervalo (ex: `'data_fato'`, `'criado_em'`).
+        data_inicio (Optional[Any]): Limite inferior inclusivo (`>= data_inicio`).
+        data_fim (Optional[Any]): Limite superior inclusivo (`<= data_fim`).
+        colunas (str): Colunas a serem selecionadas separadas por vírgula
+            (padrão `'*'`). Quando explicitadas, devem incluir `coluna_cursor`.
+        cliente (Optional[Client]): Instância opcional do cliente Supabase.
+
+    Returns:
+        Dict[str, Any]: Dicionário no padrão:
+            `{"items": [...], "pagination": {"limit": int, "next_cursor": Optional[int], "has_next": bool}}`.
+
+    Raises:
+        ValueError: Se `tabela`, `coluna_cursor`, `colunas`, `limite`, `cursor` ou
+            `filtros_in` forem inválidos.
+        ErroOperacaoBanco: Se ocorrer falha na execução da consulta ou se a
+            coluna de cursor não estiver presente quando houver próxima página.
+    """
+    if not isinstance(tabela, str) or not tabela.strip():
+        logger.error("Tentativa de consulta paginada com nome de tabela vazio")
+        raise ValueError("O nome da tabela não pode ser vazio.")
+
+    if not isinstance(coluna_cursor, str) or not coluna_cursor.strip():
+        logger.error("Tentativa de consulta paginada com coluna_cursor vazia")
+        raise ValueError("A coluna de cursor não pode ser vazia.")
+    coluna_cursor_normalizada = coluna_cursor.strip()
+
+    if not isinstance(colunas, str) or not colunas.strip():
+        logger.error("Tentativa de consulta paginada com seleção de colunas vazia")
+        raise ValueError("As colunas selecionadas não podem ser vazias.")
+    colunas_normalizadas = colunas.strip()
+    if colunas_normalizadas != "*":
+        colunas_lista = [c.strip() for c in colunas_normalizadas.split(",")]
+        if "*" not in colunas_lista and coluna_cursor_normalizada not in colunas_lista:
+            logger.error(
+                "Coluna de cursor ausente na seleção coluna_cursor=%s colunas=%s",
+                coluna_cursor_normalizada,
+                colunas_normalizadas,
+            )
+            raise ValueError(
+                f"A seleção de colunas deve incluir a coluna de cursor '{coluna_cursor_normalizada}'."
+            )
+
+    if isinstance(limite, bool) or not isinstance(limite, int) or limite <= 0 or limite > LIMITE_MAXIMO_PAGINACAO:
+        logger.error("Tentativa de consulta paginada com limite inválido limite=%s", limite)
+        raise ValueError(
+            f"O limite da consulta paginada deve ser um inteiro entre 1 e {LIMITE_MAXIMO_PAGINACAO}."
+        )
+
+    if cursor is not None and (isinstance(cursor, bool) or not isinstance(cursor, int) or cursor <= 0):
+        logger.error("Tentativa de consulta paginada com cursor inválido cursor=%s", cursor)
+        raise ValueError("O cursor deve ser um inteiro maior que zero.")
+
+    if filtros_in is not None:
+        for coluna, valores in filtros_in.items():
+            if isinstance(valores, (str, bytes)) or not isinstance(valores, Sequence) or len(valores) == 0:
+                logger.error(
+                    "Tentativa de consulta paginada com filtros_in inválido coluna=%s",
+                    coluna,
+                )
+                raise ValueError(
+                    f"Os valores de 'filtros_in' para '{coluna}' devem ser uma sequência não vazia."
+                )
+
+    db = cliente or criar_cliente_supabase()
+
+    try:
+        query = db.table(tabela).select(colunas_normalizadas)
+
+        if filtros:
+            for coluna, valor in filtros.items():
+                query = query.eq(coluna, valor)
+        if filtros_in:
+            for coluna, valores in filtros_in.items():
+                query = query.in_(coluna, list(valores))
+        if coluna_data:
+            if data_inicio is not None:
+                query = query.gte(coluna_data, str(data_inicio))
+            if data_fim is not None:
+                query = query.lte(coluna_data, str(data_fim))
+        if cursor is not None:
+            query = query.lt(coluna_cursor_normalizada, cursor)
+
+        query = query.order(coluna_cursor_normalizada, desc=True).limit(limite + 1)
+        resposta = query.execute()
+        dados = resposta.data or []
+    except Exception as e:
+        logger.error(
+            "Erro na operação de consulta paginada tabela=%s erro=%s",
+            tabela,
+            e,
+        )
+        raise ErroOperacaoBanco("consulta_paginada", tabela, detalhe=str(e)) from e
+
+    has_next = len(dados) > limite
+    items = dados[:limite]
+    next_cursor = None
+    if has_next and items:
+        if coluna_cursor_normalizada not in items[-1]:
+            logger.error(
+                "Coluna de cursor não retornada pela consulta tabela=%s coluna_cursor=%s",
+                tabela,
+                coluna_cursor_normalizada,
+            )
+            raise ErroOperacaoBanco(
+                "consulta_paginada",
+                tabela,
+                detalhe=f"A coluna de cursor '{coluna_cursor_normalizada}' não foi retornada na consulta.",
+            )
+        next_cursor = items[-1][coluna_cursor_normalizada]
+
+    logger.info(
+        "Consulta paginada concluída tabela=%s registros_retornados=%s has_next=%s next_cursor=%s",
+        tabela,
+        len(items),
+        has_next,
+        next_cursor,
+    )
+    return {
+        "items": items,
+        "pagination": {
+            "limit": limite,
+            "next_cursor": next_cursor,
+            "has_next": has_next,
+        },
+    }
 
 
 def inserir_registros(

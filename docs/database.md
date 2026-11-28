@@ -224,6 +224,9 @@ CREATE INDEX idx_informacoes_arquivo_ingestao_id ON public.informacoes_arquivo(i
 -- Otimização de consultas de métricas de uso da API por período e tipo de cliente
 CREATE INDEX idx_api_request_logs_requested_at ON public.api_request_logs(requested_at);
 CREATE INDEX idx_api_request_logs_client_date ON public.api_request_logs(client_type, requested_at);
+
+-- Otimização para consultas usando key-set
+CREATE INDEX idx_crimes_tipo_id_desc ON public.ocorrencias_crimes(tipo_crime, id DESC);
 ```
 
 ---
@@ -335,6 +338,7 @@ CREATE INDEX idx_crimes_municipio ON public.ocorrencias_crimes(municipio);
 CREATE INDEX idx_crimes_ais ON public.ocorrencias_crimes(ais);
 CREATE INDEX idx_api_request_logs_requested_at ON public.api_request_logs(requested_at);
 CREATE INDEX idx_api_request_logs_client_date ON public.api_request_logs(client_type, requested_at);
+CREATE INDEX idx_crimes_tipo_id_desc ON public.ocorrencias_crimes(tipo_crime, id DESC);
 
 -- 6. Segurança a Nível de Linha (RLS - Row Level Security)
 ALTER TABLE public.historico_ingestoes ENABLE ROW LEVEL SECURITY;

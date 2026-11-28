@@ -15,7 +15,7 @@ from app.services.crime_service import (
     TIPO_PRECONCEITO,
     TIPOS_COM_VITIMA,
     TIPOS_OPERACIONAIS,
-    CrimeService, 
+    CrimeService,
 )
 from database.repository import LIMITE_MAXIMO_PAGINACAO, LIMITE_PADRAO_PAGINACAO
 
@@ -84,10 +84,17 @@ def _respostas(detalhe_404: str, exemplo_422: Dict[str, Any] = _EXEMPLO_422_LIMI
     }
 
 
-LimitParam = Annotated[int,Query(
-        gt=0,le=LIMITE_MAXIMO_PAGINACAO,description=(
+LimitParam = Annotated[
+    int,
+    Query(
+        gt=0,
+        le=LIMITE_MAXIMO_PAGINACAO,
+        description=(
             f"Número máximo de registros por página "
-            f"(padrão: {LIMITE_PADRAO_PAGINACAO}, máx.: {LIMITE_MAXIMO_PAGINACAO})"),),]
+            f"(padrão: {LIMITE_PADRAO_PAGINACAO}, máx.: {LIMITE_MAXIMO_PAGINACAO})"
+        ),
+    ),
+]
 
 CursorParam = Annotated[
     Optional[int],
@@ -96,6 +103,16 @@ CursorParam = Annotated[
         description="Cursor keyset (id do último item da página anterior em ordem decrescente)",
     ),
 ]
+
+
+def _validar_periodo(data_inicio: Optional[date], data_fim: Optional[date]) -> None:
+    """Rejeita com 422 um período em que `data_inicio` é posterior a `data_fim`."""
+    if data_inicio and data_fim and data_inicio > data_fim:
+        raise HTTPException(
+            status_code=422,
+            detail="data_inicio não pode ser posterior a data_fim.",
+        )
+
 
 # 1. Rota Geral de Consulta (Busca unificada na tabela do banco com filtros)
 @router.get(
@@ -134,11 +151,7 @@ def listar_crimes_geral(
     """
     Endpoint flexível de consulta unificada de crimes com suporte a múltiplos filtros opcionais.
     """
-    if data_inicio and data_fim and data_inicio > data_fim:
-        raise HTTPException(
-            status_code=422,
-            detail="data_inicio não pode ser posterior a data_fim.",
-        )
+    _validar_periodo(data_inicio, data_fim)
 
     pagina = CrimeService.listar_com_filtros(
         municipio=municipio,
@@ -191,13 +204,9 @@ def listar_cvli(
 ):
     """
     Lista ocorrências de CVLI.
-    Se o parâmetro 'limit' não for informado, retorna até o limite padrão de paginação.
+    Se o parâmetro 'limit' não for informado, usa o limite padrão de paginação.
     """
-    if data_inicio and data_fim and data_inicio > data_fim:
-        raise HTTPException(
-            status_code=422,
-            detail="data_inicio não pode ser posterior a data_fim.",
-        )
+    _validar_periodo(data_inicio, data_fim)
 
     pagina = CrimeService.listar_por_tipo(
         tipo=TIPO_CVLI,
@@ -255,11 +264,7 @@ def listar_preconceito(
     """
     Lista ocorrências de crimes de preconceito.
     """
-    if data_inicio and data_fim and data_inicio > data_fim:
-        raise HTTPException(
-            status_code=422,
-            detail="data_inicio não pode ser posterior a data_fim.",
-        )
+    _validar_periodo(data_inicio, data_fim)
 
     pagina = CrimeService.listar_por_tipo(
         tipo=TIPO_PRECONCEITO,
@@ -313,11 +318,7 @@ def listar_operacionais(
     """
     Lista ocorrências de crimes operacionais (Furto e CVP).
     """
-    if data_inicio and data_fim and data_inicio > data_fim:
-        raise HTTPException(
-            status_code=422,
-            detail="data_inicio não pode ser posterior a data_fim.",
-        )
+    _validar_periodo(data_inicio, data_fim)
 
     pagina = CrimeService.listar_por_tipos(
         tipos=TIPOS_OPERACIONAIS,
@@ -363,15 +364,12 @@ def listar_crimes_com_vitima(
     data_inicio: Optional[date] = Query(None, description="Data inicial (inclusiva) no formato AAAA-MM-DD"),
     data_fim: Optional[date] = Query(None, description="Data final (inclusiva) no formato AAAA-MM-DD"),
     cursor: CursorParam = None,
-    limit: LimitParam = LIMITE_PADRAO_PAGINACAO,):
+    limit: LimitParam = LIMITE_PADRAO_PAGINACAO,
+):
     """
     Lista ocorrências de crimes com perfil de vítima (Maria da Penha, Sexuais, Indígenas).
     """
-    if data_inicio and data_fim and data_inicio > data_fim:
-        raise HTTPException(
-            status_code=422,
-            detail="data_inicio não pode ser posterior a data_fim.",
-        )
+    _validar_periodo(data_inicio, data_fim)
 
     pagina = CrimeService.listar_por_tipos(
         tipos=TIPOS_COM_VITIMA,

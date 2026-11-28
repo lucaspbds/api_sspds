@@ -56,7 +56,7 @@ As rotas `/crimes/*` e `/historico-ingestoes/` usam **paginação por cursor (ke
 
 | Parâmetro | Tipo | Descrição |
 | :--- | :--- | :--- |
-| `limit` | `integer`, `> 0` | Registros por página. Padrão e máximo definidos em `database.repository` (`LIMITE_PADRAO_PAGINACAO` e `LIMITE_MAXIMO_PAGINACAO`); acima do máximo a resposta é `422`. |
+| `limit` | `integer`, `> 0` | Registros por página. Padrão **100**, máximo **500** (`LIMITE_PADRAO_PAGINACAO` e `LIMITE_MAXIMO_PAGINACAO` em `database.repository`); acima do máximo a resposta é `422`. |
 | `cursor` | `integer`, `> 0` | `id` do último item da página anterior (use o `next_cursor` recebido). Omitido, retorna a primeira página. |
 
 Formato da resposta:
@@ -342,4 +342,4 @@ Os detalhes técnicos (nome da variável de ambiente, stack trace) são registra
 - A rota `/health` foi substituída por `/health/live` e `/health/ready`; monitores externos que usavam `/health` precisam ser atualizados.
 - As variáveis `SUPABASE_URL`, `SUPABASE_KEY` e `LOG_LEVEL` precisam estar definidas no `.env` (o módulo de banco configura os logs ao ser importado).
 - Os testes de `tests/test_crimes.py` e `tests/test_historico_ingestoes.py` consultam o Supabase real, enquanto `tests/test_health.py` usa `monkeypatch` sem acessar o banco; veja o [README](../README.md#66-executar-os-testes).
-- A cobertura dos dados está temporariamente incompleta: 3 dos 26 arquivos da SSPDS/CE (Armas de Fogo de outubro/2026 e Salvamento/Incêndios 2022–2024) não foram carregados por problemas de padronização na fonte. Detalhes em [`docs/ingestion.md`](ingestion.md#81-incompletude-atual-dos-dados-em-produção).
+- A cobertura histórica dos dados em produção é limitada: a série histórica da SSPDS/CE foi recortada para os anos mais recentes de cada planilha (hoje, `INTERVALO_MAXIMO_ANOS=6`) por causa do limite de armazenamento do plano gratuito do Supabase. Ocorrências anteriores a esse período não estão disponíveis na API. Detalhes em [`docs/ingestion.md`](ingestion.md#81-cobertura-atual-dos-dados-em-produção).

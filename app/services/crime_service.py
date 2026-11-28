@@ -168,10 +168,10 @@ class CrimeService:
         """
         Consulta geral com filtros dinâmicos (todos opcionais e combináveis) e paginação por cursor.
 
-- `tipo_crime`: valor exato da coluna (maiúsculas e espaços extras normalizados).
-- Demais filtros de texto: igualdade exata, sem diferenciar maiúsculas/minúsculas
+        - `tipo_crime`: valor exato da coluna (maiúsculas e espaços extras normalizados).
+        - Demais filtros de texto: igualdade exata, sem diferenciar maiúsculas/minúsculas
           (a entrada é normalizada para o padrão gravado pela ingestão).
-- `data_inicio` / `data_fim`: período inclusivo sobre `data_fato`.
+        - `data_inicio` / `data_fim`: período inclusivo sobre `data_fato`.
         """
         candidatos: Dict[str, Optional[str]] = {
             "municipio": _normalizar_texto(municipio),

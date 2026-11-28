@@ -14,7 +14,9 @@ _EXEMPLO_422_STATUS: Dict[str, Any] = {
     "detail": "Status inválido 'INVALIDO'. Valores permitidos: EM_ANDAMENTO, FALHA, PARCIAL, SUCESSO."
 }
 
+
 def _respostas(detalhe_404: str, exemplo_422: Dict[str, Any] = _EXEMPLO_422_STATUS) -> Dict[int, Dict[str, Any]]:
+    """Monta o bloco `responses` do OpenAPI com os erros possíveis da rota."""
     return {
         404: {
             "description": "Nenhum dado encontrado",
@@ -26,15 +28,30 @@ def _respostas(detalhe_404: str, exemplo_422: Dict[str, Any] = _EXEMPLO_422_STAT
         },
         500: {
             "description": "Erro interno (consulta ao banco ou configuração)",
-            "content": {"application/json": {"example": {"erro": "Erro na Operação do Banco", "mensagem": "Falha ao executar a operação."}}},
+            "content": {
+                "application/json": {
+                    "example": {
+                        "erro": "Erro na Operação do Banco",
+                        "mensagem": "Falha ao executar a operação solicitada no Supabase.",
+                    }
+                }
+            },
         },
         503: {
             "description": "Banco de dados indisponível",
-            "content": {"application/json": {"example": {"erro": "Erro de Conexão com o Banco", "mensagem": "Não foi possível estabelecer comunicação."}}},
+            "content": {
+                "application/json": {
+                    "example": {
+                        "erro": "Erro de Conexão com o Banco",
+                        "mensagem": "Não foi possível estabelecer comunicação com o Supabase.",
+                    }
+                }
+            },
         },
     }
 
-# Reutilizando os tipos anotados do padrão do projeto
+
+# Tipos anotados reutilizáveis (mesmo padrão de app/routers/crimes.py)
 LimitParam = Annotated[
     int,
     Query(
@@ -73,11 +90,12 @@ def listar_historico_ingestoes(
     ),
     data: Optional[date] = Query(
         None,
-        description="Filtrar pela data de criação (`criado_em`) no formato AAAA-MM-DD",
+        description="Filtrar pela data de criação (`criado_em`, dia inteiro em UTC) no formato AAAA-MM-DD",
     ),
     cursor: CursorParam = None,
     limit: LimitParam = LIMITE_PADRAO_PAGINACAO,
 ):
+    """Lista as execuções da ingestão, da mais recente para a mais antiga (`id DESC`)."""
     try:
         pagina = HistoricoIngestoesService.listar_historico(
             status=status,
